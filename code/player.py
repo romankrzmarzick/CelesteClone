@@ -91,15 +91,14 @@ class Player(pygame.sprite.Sprite):
             "wall_jump" : Timer(175),
             "wall_jump_delay" : Timer(250),
             "dash" : Timer(300),
-            "round-jump" : Timer(125)
         }
     
     def dash_move(self, dt):
         if self.on_surface["floor"]:
             self.can_dash = True
 
-
-        if self.timers["dash"].active and self.move_vector.x != 0 and self.move_vector.y <= 0:
+        if self.timers["dash"].active and self.move_vector != Vector2(0, 0):
+            self.old_dir.normalize() if self.old_dir else self.old_dir
             self.can_dash = False
             self.gravity_vector.y = 0
             self.hitbox_rect.center += (self.dash_speed * self.old_dir) * dt
@@ -113,14 +112,14 @@ class Player(pygame.sprite.Sprite):
         if not self.timers["dash"].active:
             if not self.timers["wall_jump"].active:
                 if keys[pygame.K_RIGHT]:
-                    input_dir.x += 1
+                    input_dir.x = 1
                 if keys[pygame.K_LEFT]:
-                    input_dir.x += - 1
+                    input_dir.x = - 1
                 if keys[pygame.K_UP]:
-                    input_dir.y += -1
+                    input_dir.y = -1
                 if keys[pygame.K_DOWN]:
-                    input_dir.y +=  1
-                self.move_vector = input_dir.normalize() if input_dir else input_dir
+                    input_dir.y =  1
+                self.move_vector = input_dir
 
 
         if keys[pygame.K_UP] and not self.crouching:
@@ -133,7 +132,7 @@ class Player(pygame.sprite.Sprite):
         if keys[pygame.K_x]:
             if self.can_dash:
                 self.timers["dash"].activate()
-                self.old_dir = self.move_vector
+                self.old_dir = input_dir
 
         if keys[pygame.K_SPACE]:
             self.climbing = True
@@ -164,6 +163,8 @@ class Player(pygame.sprite.Sprite):
         self.collisons("y")
         self.update_rect()
 
+        if self.crouching and self.on_surface["floor"]:
+            return
 
         if not self.on_surface["floor"] and any((self.on_surface["left"], self.on_surface["right"])) and self.gravity_vector.y > 0:
             self.gravity_vector.y = 0
@@ -175,6 +176,7 @@ class Player(pygame.sprite.Sprite):
 
         if self.dash_move(dt):
             self.collisons("x")
+            self.collisons("y")
             return
 
         # // jump 
@@ -228,7 +230,7 @@ class Player(pygame.sprite.Sprite):
 
     def now_state(self):
         wall = any((self.on_surface["right"], self.on_surface["left"]))
-        if self.timers["dash"].active and self.move_vector.x != 0 and not self.climbing and self.move_vector.y <= 0:
+        if self.timers["dash"].active and not self.climbing and self.move_vector != Vector2(0, 0):
             return "dash"
         if self.on_surface["floor"]:
             if wall and self.move_vector.x != 0:
@@ -246,6 +248,13 @@ class Player(pygame.sprite.Sprite):
             return "wall"   
         return "jump" if self.gravity_vector.y < 0 else "fall"
 
+    def close_rects(self, pos_1, pos_2):
+        pos_1 = Vector2(pos_1)
+        pos_2 = Vector2(pos_2)
+        if pos_1.distance_squared_to(pos_2) <= 300:
+            return True
+        return False
+
 
     def contact(self):
         floor_rect = pygame.Rect(self.hitbox_rect.bottomleft, (self.hitbox_rect.width, 2))
@@ -260,7 +269,14 @@ class Player(pygame.sprite.Sprite):
             dangle_rect = pygame.Rect((self.hitbox_rect.topright + Vector2(0, (self.hitbox_rect.height / 2) + 1.5)), (1, 1))
         else: dangle_rect = pygame.Rect((self.hitbox_rect.topleft + Vector2(-1, (self.hitbox_rect.height / 2) + 1.5)), (1, 1))
 
-        collide_rects = [sprite.rect for sprite in self.collision_sprites]
+
+
+        
+        collide_rects = [sprite.rect for sprite in self.collision_sprites if self.close_rects(self.rect.center, sprite.rect.center) ]
+
+        
+
+
 
         self.on_surface["floor"] = True if floor_rect.collidelist(collide_rects) >=0 else False
         self.on_surface["left"] = True if left_rect.collidelist(collide_rects) >=0 else False

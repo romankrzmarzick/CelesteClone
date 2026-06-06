@@ -30,3 +30,4 @@ class Level:
         self.internal_canvas.fill("#263D3B")
         self.all_sprites.update(dt)
         self.all_sprites.draw()
+      
