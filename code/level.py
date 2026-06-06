@@ -13,16 +13,17 @@ class Level:
     def setup(self, tmx_map, level_frames):
         for obj in tmx_map.get_layer_by_name("Entities"):
             if obj.name == "player":
-                self.player = Player((obj.x, obj.y), self.all_sprites, self.collision_sprites, level_frames["player"])
+                self.player = Player((obj.x, obj.y), self.all_sprites, self.collision_sprites, level_frames["player"], self.internal_canvas)
         
-        for x, y, image in tmx_map.get_layer_by_name("Terrian").tiles():
+        for x, y, image in tmx_map.get_layer_by_name("Terrain").tiles():
             Sprite((x * TILE_SIZE, y * TILE_SIZE), image, (self.all_sprites, self.collision_sprites))
 
         for x, y, image, in tmx_map.get_layer_by_name("Spikes").tiles():
             Sprite((x * TILE_SIZE, y * TILE_SIZE), image, self.all_sprites)
 
         for obj in tmx_map.get_layer_by_name("Death"):
-            CollisionSprite((obj.x, obj.y), pygame.Surface((obj.width, obj.height)), self.collision_sprites)
+            CollisionSprite((obj.x, obj.y), pygame.Surface((obj.width, obj.height)), self.all_sprites)
+
 
 
 

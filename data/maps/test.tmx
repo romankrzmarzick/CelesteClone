@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.10" tiledversion="1.12.1" orientation="orthogonal" renderorder="right-down" width="40" height="23" tilewidth="8" tileheight="8" infinite="0" nextlayerid="6" nextobjectid="14">
  <tileset firstgid="1" source="../tiles/Foregound.tsx"/>
- <layer id="1" name="Terrian" width="40" height="23">
+ <layer id="1" name="Terrain" width="40" height="23">
   <data encoding="csv">
 5,5,5,5,4,7,7,0,7,7,7,7,7,7,5,5,5,5,5,5,5,4,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,5,5,5,
 5,7,7,7,4,0,7,7,7,0,0,0,0,7,5,5,5,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,5,5,5,
