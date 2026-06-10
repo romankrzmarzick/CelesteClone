@@ -1,9 +1,8 @@
-from settings import * 
-from event_timers import *
+from settings import *
+from event_timers import Timer
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, pos, groups, collision_sprites, frames, z=Z_LAYERS["main"], s=None):
-        self.display_surface = s
+    def __init__(self, pos, groups, collision_sprites, frames, z=Z_LAYERS["main"]):
         # player general setup
         super().__init__(groups)
         self.z = z
@@ -17,16 +16,9 @@ class Player(pygame.sprite.Sprite):
         self.dir_vector = vector()
         self.move_vector = vector()
         
-        # x-axis speed
-        self.x_speed = 7
-        self.x_max_speed = 60
-
         # // y-direction atrributes
         self.is_jumping = False
-        self.jump_height = 155
-        self.gravity_num = 460
-        self.max_fall_speed = 160
-
+        
         # // special movement
         # player crouching 
         self.crouching = False
@@ -34,18 +26,15 @@ class Player(pygame.sprite.Sprite):
         # player long-fall
         self.embrace = False
 
-        # player dash 
-        self.dash_speed = 140
+        # player dash
         self.can_dash = True
 
         # player climbing
-        self.climbing_speed = 50
+        self.climbing = False
         self.climbing_active = False
 
-        # player mantle
-        self.mantle_x_speed = 40
-        self.mantle_y_speed = 80
-
+        # balance bool
+        self.can_balance = False
 
         # // player rects
         # player collisions
@@ -60,12 +49,14 @@ class Player(pygame.sprite.Sprite):
         # old_rect is used for the collision logic to find location between two objects. 
         self.old_rect = self.hitbox_rect.copy()
 
+        self.collide_rects = []
+
         # detection rects that are based on the player's position for specified use cases. 
         self.on_surface = {"floor" : False, "left" : False, "right" : False, "edge" : False, "dangle" : False, "embrace" : False, "climb-mantle" : False}
 
         # // timers
         self.timers = {
-            "balance_delay" : Timer(1200, func=self.balance_animation_delay),
+            "balance_delay" : Timer(1000, func=self.balance_animation),
             "wall_jump" : Timer(190),
             "wall_jump_delay" : Timer(250),
             "dash" : Timer(290),
@@ -106,11 +97,14 @@ class Player(pygame.sprite.Sprite):
         else: self.climbing = False
 
     def move(self, dt):
+        self.is_embrace()
+        self.balance()
+
         # // climb
         self.climb(dt)
         if self.climbing_active:
-            self.collisons("x")
-            self.collisons("y")
+            self.collisions("x")
+            self.collisions("y")
             self.update_rect()
             return
 
@@ -118,26 +112,24 @@ class Player(pygame.sprite.Sprite):
         if self.crouching and self.on_surface["floor"]:
             return
         
-        # // gravity
-        self.gravity(dt)
-        self.collisons("y")
-       
-        
-
-        if not self.on_surface["floor"] and any((self.on_surface["left"], self.on_surface["right"])) and self.move_vector.y > 0:
-            self.wall_slide(dt)
-
-        if not self.timers["dash"].active:
-            self.x_move(dt)
-        self.collisons("x")
-
         # // dash
         if self.dash(dt):
-            self.collisons("x")
-            self.collisons("y")
+            self.collisions("x")
+            self.collisions("y")
             self.update_rect()
             return
         
+        # // gravity
+        if self.wall_slide(dt):
+            pass
+        else: self.gravity(dt)
+
+        self.collisions("y")
+        
+        if not self.timers["dash"].active:
+            self.x_move(dt)
+        self.collisions("x")
+
         # // jumps
         if self.is_jumping:
             if self.on_surface["floor"]:
@@ -148,11 +140,7 @@ class Player(pygame.sprite.Sprite):
         
         self.update_rect()
 
-
-    def balance_animation_delay(self):
-        self.on_surface["edge"] = True
-
-    def embrace_active(self):
+    def is_embrace(self):
         """
         This function is used to set the embrace bool according to the state of the embrace surface when falling.
         If the player is high above the ground when it reaches its time to switch to its fall state the embrace/longfall will be switched to True.
@@ -163,45 +151,57 @@ class Player(pygame.sprite.Sprite):
             self.embrace = False
         return self.embrace
 
+    def balance_animation(self):
+        self.can_balance = True
+
+    def balance(self):
+        on_edge = self.on_surface["edge"]
+
+        if on_edge and not self.timers["balance_delay"].active:
+            self.timers["balance_delay"].activate()
+        elif not on_edge: 
+            self.timers["balance_delay"].deactivate()
+            self.can_balance=False
+
     def mantle(self, dt):
         """
         The mantle recorrects the player's position when it is above the top surface of a rect when climbing.
         This is needed to avoid the rect collision correction, because otherwise the player wouldn't be able to clear the edge.
         """
-        self.hitbox_rect.y += -self.mantle_y_speed * dt
+        self.hitbox_rect.y += -PLAYER_PHYSICS.mantle_y_speed * dt
         self.dir_vector.x = -1 if self.facing_left else 1
-        self.hitbox_rect.x += self.mantle_x_speed * self.dir_vector.x * dt
+        self.hitbox_rect.x += PLAYER_PHYSICS.mantle_x_speed * self.dir_vector.x * dt
 
     def climb(self, dt):
         """
         The climb function allows the player to move up and down on a surface while canceling out the y-direction gravity.
         When the climb key is held, the player sticks to the wall without any outside forces. 
         """
-        if self.on_surface["climb-mantle"]:
+        if self.on_surface["climb"]:
             self.timers["mantle"].activate()
         if self.timers["mantle"].active:
            self.mantle(dt)
         else:
-            if self.climbing and not self.on_surface["floor"] and any((self.on_surface["left"], self.on_surface["right"])):
+            if self.climbing and not self.on_surface["floor"] and not self.on_surface["climb"] and any((self.on_surface["left"], self.on_surface["right"])):
                 self.move_vector.y = 0
-                self.hitbox_rect.y += (self.climbing_speed * self.dir_vector.y) * dt
+                self.hitbox_rect.y += (PLAYER_PHYSICS.climbing_speed * self.dir_vector.y) * dt
                 self.climbing_active = True
             else: self.climbing_active = False
     
     def x_move(self, dt):
         if self.dir_vector.x != 0:
-            self.move_vector.x += self.x_speed * self.dir_vector.x / 2
-            if self.move_vector.x > self.x_max_speed: self.move_vector.x = self.x_max_speed
-            elif self.move_vector.x < -self.x_max_speed: self.move_vector.x = -self.x_max_speed
+            self.move_vector.x += PLAYER_PHYSICS.x_speed * self.dir_vector.x / 2
+            if self.move_vector.x > PLAYER_PHYSICS.x_max_speed: self.move_vector.x = PLAYER_PHYSICS.x_max_speed
+            elif self.move_vector.x < -PLAYER_PHYSICS.x_max_speed: self.move_vector.x = -PLAYER_PHYSICS.x_max_speed
             self.hitbox_rect.x += self.move_vector.x * dt
-            self.move_vector.x += self.x_speed * self.dir_vector.x / 2
+            self.move_vector.x += PLAYER_PHYSICS.x_speed * self.dir_vector.x / 2
         else: self.move_vector.x = 0
     
     def gravity(self, dt):
-        self.move_vector.y += self.gravity_num / 2 * dt 
-        self.move_vector.y = min(self.max_fall_speed, self.move_vector.y)
+        self.move_vector.y += PLAYER_PHYSICS.gravity_num / 2 * dt 
+        self.move_vector.y = min(PLAYER_PHYSICS.max_fall_speed, self.move_vector.y)
         self.hitbox_rect.y += self.move_vector.y * dt
-        self.move_vector.y += self.gravity_num / 2 * dt
+        self.move_vector.y += PLAYER_PHYSICS.gravity_num / 2 * dt
 
     def jump(self):
         """
@@ -209,7 +209,7 @@ class Player(pygame.sprite.Sprite):
         Finally the jump simply sets the move_vector.y to the jump height as a negative to move the rect upwards.
         """
         self.timers["wall_jump_delay"].activate()
-        self.move_vector.y = -self.jump_height
+        self.move_vector.y = -PLAYER_PHYSICS.jump_height
         # small pixel adjustment for stick glitch
         self.hitbox_rect.bottom -= 1
  
@@ -219,14 +219,17 @@ class Player(pygame.sprite.Sprite):
         It does the same jump height for the y vector while pushing the object in the opposite direction from the wall.
         """
         self.timers["wall_jump"].activate()
-        self.move_vector.y = -self.jump_height
+        self.move_vector.y = -PLAYER_PHYSICS.jump_height
         self.dir_vector.x = 1 if self.on_surface["left"] else -1
 
     def wall_slide(self, dt):
         """Gets rid of the gravity influence on the player object to then slowly push the character downwards to represent slding."""
-        self.move_vector.y = 0
-        self.hitbox_rect.y += self.gravity_num / 10 * dt
-
+        if not self.on_surface["floor"] and any((self.on_surface["left"], self.on_surface["right"])) and self.move_vector.y > 0 and not self.on_surface["climb"] and self.move_vector.x != 0:
+            self.move_vector.y = 0
+            self.hitbox_rect.y += PLAYER_PHYSICS.gravity_num / 10 * dt
+            return True
+        return False
+    
     def dash(self, dt):
         if self.on_surface["floor"]:
             self.can_dash = True
@@ -235,7 +238,7 @@ class Player(pygame.sprite.Sprite):
             normalized_dir = self.old_dir.normalize() if self.old_dir else self.old_dir
             self.can_dash = False
             self.move_vector = vector(0, 0)
-            self.hitbox_rect.center += (self.dash_speed * normalized_dir) * dt
+            self.hitbox_rect.center += (PLAYER_PHYSICS.dash_speed * normalized_dir) * dt
             return True
         return False
 
@@ -248,23 +251,25 @@ class Player(pygame.sprite.Sprite):
             else: self.rect.center = self.hitbox_rect.center - vector(-1, 0)
         else: self.rect.center = self.hitbox_rect.center
 
-    def collisons(self, direction):
+    def collisions(self, direction):
+        hitbox = self.hitbox_rect
+
         for sprite in self.collision_sprites:
-            if self.hitbox_rect.colliderect(sprite.rect):
+            if hitbox.colliderect(sprite.rect):
                 if direction == "x":
-                    if self.hitbox_rect.right >= sprite.rect.left and self.old_rect.right <= sprite.old_rect.left + 1: 
-                        self.hitbox_rect.right = sprite.rect.left
+                    if hitbox.right >= sprite.rect.left and self.old_rect.right <= sprite.old_rect.left + 1: 
+                        hitbox.right = sprite.rect.left
                         self.timers["dash"].deactivate()
-                    elif self.hitbox_rect.left <= sprite.rect.right and self.old_rect.left >= sprite.old_rect.right - 1: 
-                        self.hitbox_rect.left = sprite.rect.right
+                    elif hitbox.left <= sprite.rect.right and self.old_rect.left >= sprite.old_rect.right - 1: 
+                        hitbox.left = sprite.rect.right
                         self.timers["dash"].deactivate()
                 else:
-                    if self.hitbox_rect.bottom >= sprite.rect.top and self.old_rect.bottom <= sprite.rect.top + 1: 
-                        self.hitbox_rect.bottom = sprite.rect.top
+                    if hitbox.bottom >= sprite.rect.top and self.old_rect.bottom <= sprite.old_rect.top + 1: 
+                        hitbox.bottom = sprite.rect.top
                         self.move_vector.y = 0
                         
-                    elif self.hitbox_rect.top <= sprite.rect.bottom and self.old_rect.top >= sprite.old_rect.bottom - 1: 
-                        self.hitbox_rect.top = sprite.rect.bottom
+                    elif hitbox.top <= sprite.rect.bottom and self.old_rect.top >= sprite.old_rect.bottom - 1: 
+                        hitbox.top = sprite.rect.bottom
                         self.move_vector.y = 0
                         
     def update_timers(self):
@@ -281,20 +286,20 @@ class Player(pygame.sprite.Sprite):
                 return "push"
             if self.crouching:
                 return "crouch"
-            if self.on_surface["edge"]:
+            if self.can_balance:
                 return "balance"
             return "idle" if self.dir_vector.x == 0 else "run"
         if wall:
             if self.climbing and self.dir_vector.y < 0:
                 return "climb"
-            if self.on_surface["dangle"]:
-                return "dangle"
             if self.move_vector.y >= 0:
                 return "wall"   
+            if self.on_surface["dangle"]:
+                return "dangle"
         if self.move_vector.y < 0:
             return "jump"
         else:
-            if self.embrace_active():
+            if self.embrace:
                 return "embrace"
             return "fall"
 
@@ -320,7 +325,7 @@ class Player(pygame.sprite.Sprite):
         if not self.facing_left:
             climb_rect = pygame.Rect((hitbox.midright + vector(2, -4)), (1, 6))
         else: climb_rect = pygame.Rect((hitbox.midleft + vector(-3, -4)), (1, 6))
-
+    
         if not self.facing_left:
             edge_rect = pygame.Rect((hitbox.bottomright), (1, 1))
         else: edge_rect = pygame.Rect((hitbox.bottomleft + vector(-2, 0)), (1, 1))
@@ -329,7 +334,7 @@ class Player(pygame.sprite.Sprite):
             dangle_rect = pygame.Rect((hitbox.topright + vector(0, (hitbox.height / 1.8))), (1, 1))
         else: dangle_rect = pygame.Rect((hitbox.topleft + vector(-1, (hitbox.height / 1.8))), (1, 1))
 
-        embrace_rect = pygame.Rect(self.hitbox_rect.center + vector(0, TILE_SIZE * 5), (1, 1))
+        embrace_rect = pygame.Rect(self.hitbox_rect.center, (0, TILE_SIZE * 5))
 
         # // core
         self.on_surface["floor"] = self.is_touching(floor_rect) 
@@ -339,25 +344,11 @@ class Player(pygame.sprite.Sprite):
         # // special 
         self.on_surface["embrace"] = not self.is_touching(embrace_rect) and self.move_vector.y > 0
         
-        self.on_surface["climb-mantle"] = not self.is_touching(climb_rect) and wall and self.climbing_active
+        self.on_surface["climb"] = not self.is_touching(climb_rect) and wall and self.climbing_active
         
-        if not self.is_touching(edge_rect) and self.is_touching(floor_rect) and not self.timers["balance_delay"].active:
-            print("ddddd")
-            self.timers["balance_delay"].activate()  
-        elif self.is_touching(edge_rect) >=0 and self.is_touching(floor_rect):
-            self.timers["balance_delay"].deactivate()  
-            self.on_surface['edge'] = False
-
+        self.on_surface["edge"] = True if not self.is_touching(edge_rect) and self.is_touching(floor_rect) else False
+           
         self.on_surface["dangle"] = not self.is_touching(dangle_rect) and wall
-
-        if self.display_surface:
-            pygame.draw.rect(self.display_surface, (255, 0, 0), floor_rect)
-            pygame.draw.rect(self.display_surface, (0,255, 0), right_rect)
-            pygame.draw.rect(self.display_surface, (0, 0, 255), left_rect)
-            pygame.draw.rect(self.display_surface, (255, 255, 0), dangle_rect)
-            pygame.draw.rect(self.display_surface, (255, 0, 255), climb_rect)
-            pygame.draw.rect(self.display_surface, (0, 255, 255), edge_rect)
-            pygame.draw.rect(self.display_surface, (255, 255, 255), embrace_rect)
 
     def animate(self, dt):  
         now = self.now_state()
@@ -390,8 +381,9 @@ class Player(pygame.sprite.Sprite):
         self.update_timers()
         self.old_rect = self.hitbox_rect.copy()
         self.input()
-        self.move(dt)
         self.contact()
+        self.move(dt)
         self.animate(dt)
-        
+
+
             

@@ -1,7 +1,6 @@
-from settings import * 
+from settings import *
 from level import Level
-from support import *
-
+from support import import_sub_folder
 
 class Game:
     def __init__(self):
@@ -18,9 +17,7 @@ class Game:
         self.current_stage = Level(self.internal_canvas, self.tmx_maps[0], self.level_frames)
         
     def import_images(self):
-        """
-        A dictionary that contains the graphics for the game. It Uses the support module to import the desired folders/files.
-        """
+        """A dictionary that contains the graphics for the game. It Uses the support module to import the desired folders/files."""
         self.level_frames = {
             "player" : import_sub_folder("graphics", "player")
         }
