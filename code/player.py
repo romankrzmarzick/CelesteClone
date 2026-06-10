@@ -2,7 +2,8 @@ from settings import *
 from event_timers import *
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, pos, groups, collision_sprites, frames, z=Z_LAYERS["main"]):
+    def __init__(self, pos, groups, collision_sprites, frames, z=Z_LAYERS["main"], s=None):
+        self.display_surface = s
         # player general setup
         super().__init__(groups)
         self.z = z
@@ -71,18 +72,6 @@ class Player(pygame.sprite.Sprite):
             "mantle" : Timer(100),
         }
 
-    def dash_move(self, dt):
-        if self.on_surface["floor"]:
-            self.can_dash = True
-
-        if self.timers["dash"].active and self.dir_vector != vector(0, 0):
-            normalized_dir = self.old_dir.normalize() if self.old_dir else self.old_dir
-            self.can_dash = False
-            self.move_vector = vector(0, 0)
-            self.hitbox_rect.center += (self.dash_speed * normalized_dir) * dt
-            return True
-        return False
-
     def input(self):
         input_dir = vector()
         keys = pygame.key.get_pressed()
@@ -115,6 +104,50 @@ class Player(pygame.sprite.Sprite):
         if keys[pygame.K_SPACE]:
             self.climbing = True
         else: self.climbing = False
+
+    def move(self, dt):
+        # // climb
+        self.climb(dt)
+        if self.climbing_active:
+            self.collisons("x")
+            self.collisons("y")
+            self.update_rect()
+            return
+
+        # // crouching switch
+        if self.crouching and self.on_surface["floor"]:
+            return
+        
+        # // gravity
+        self.gravity(dt)
+        self.collisons("y")
+       
+        
+
+        if not self.on_surface["floor"] and any((self.on_surface["left"], self.on_surface["right"])) and self.move_vector.y > 0:
+            self.wall_slide(dt)
+
+        if not self.timers["dash"].active:
+            self.x_move(dt)
+        self.collisons("x")
+
+        # // dash
+        if self.dash(dt):
+            self.collisons("x")
+            self.collisons("y")
+            self.update_rect()
+            return
+        
+        # // jumps
+        if self.is_jumping:
+            if self.on_surface["floor"]:
+                self.jump()
+            if not self.timers["wall_jump_delay"].active and any((self.on_surface["left"], self.on_surface["right"])):
+                self.wall_jump()
+            self.is_jumping = False 
+        
+        self.update_rect()
+
 
     def balance_animation_delay(self):
         self.on_surface["edge"] = True
@@ -194,42 +227,17 @@ class Player(pygame.sprite.Sprite):
         self.move_vector.y = 0
         self.hitbox_rect.y += self.gravity_num / 10 * dt
 
-    def move(self, dt):
-        self.climb(dt)
-        if self.climbing_active:
-            self.collisons("y")
-            self.update_rect()
-            return
+    def dash(self, dt):
+        if self.on_surface["floor"]:
+            self.can_dash = True
 
-        self.gravity(dt)
-
-        self.collisons("y")
-        self.update_rect()
-
-        if self.crouching and self.on_surface["floor"]:
-            return
-
-        if not self.on_surface["floor"] and any((self.on_surface["left"], self.on_surface["right"])) and self.move_vector.y > 0:
-            self.wall_slide(dt)
-
-        if not self.timers["dash"].active:
-            self.x_move(dt)
-        self.collisons("x")
-
-        if self.dash_move(dt):
-            self.collisons("x")
-            self.collisons("y")
-            self.update_rect()
-            return
-        
-        if self.is_jumping:
-            if self.on_surface["floor"]:
-                self.jump()
-            if not self.timers["wall_jump_delay"].active and any((self.on_surface["left"], self.on_surface["right"])):
-                self.wall_jump()
-            self.is_jumping = False 
-        
-        self.update_rect()
+        if self.timers["dash"].active and self.dir_vector != vector(0, 0):
+            normalized_dir = self.old_dir.normalize() if self.old_dir else self.old_dir
+            self.can_dash = False
+            self.move_vector = vector(0, 0)
+            self.hitbox_rect.center += (self.dash_speed * normalized_dir) * dt
+            return True
+        return False
 
     def update_rect(self):
         """A custom updating func for the self.rect based on the hitbox rect to fix animations."""
@@ -288,44 +296,68 @@ class Player(pygame.sprite.Sprite):
         else:
             if self.embrace_active():
                 return "embrace"
-            else: return "fall"
+            return "fall"
 
     def is_touching(self, rect):
+        """Helper function for contact. Looks to see if the passed in rect collides with any thing."""
         return rect.collidelist(self.collide_rects) >= 0
 
     def contact(self):
+        # helper variables to shorten lines of code.
+        wall = any((self.on_surface["left"], self.on_surface["right"]))
+        hitbox = self.hitbox_rect 
+
+        # grabs only the rect from the sprite to avoid passing in the entire sprite.
         self.collide_rects = [sprite.rect for sprite in self.collision_sprites]
-        
 
-        floor_rect = pygame.Rect(self.hitbox_rect.bottomleft, (self.hitbox_rect.width, 2))
-        left_rect = pygame.Rect((self.hitbox_rect.topleft + vector(-1, self.hitbox_rect.height / 3)), (1, self.hitbox_rect.height / 3))
-        right_rect = pygame.Rect((self.hitbox_rect.topright + vector(0, self.hitbox_rect.height / 3)), (1, self.hitbox_rect.height / 3))
+        # core contact rects.
+        floor_rect = pygame.Rect(hitbox.bottomleft, (hitbox.width, 1))
+        left_rect = pygame.Rect((hitbox.topleft + vector(-1, hitbox.height / 3)), (1, hitbox.height / 3))
+        right_rect = pygame.Rect((hitbox.topright + vector(0, hitbox.height / 3)), (1, hitbox.height / 3))
+
+
+        # speical contact rects.
+        if not self.facing_left:
+            climb_rect = pygame.Rect((hitbox.midright + vector(2, -4)), (1, 6))
+        else: climb_rect = pygame.Rect((hitbox.midleft + vector(-3, -4)), (1, 6))
 
         if not self.facing_left:
-            climb_rect = pygame.Rect((self.hitbox_rect.midright + vector(2, -4)), (1, 6))
-        else: climb_rect = pygame.Rect((self.hitbox_rect.midleft + vector(-3, -4)), (1, 6))
-
-        if not self.facing_left:
-            edge_rect = pygame.Rect((self.hitbox_rect.bottomright), (2, 2))
-        else: edge_rect = pygame.Rect((self.hitbox_rect.bottomleft + vector(-2, 0)), (2, 2))
+            edge_rect = pygame.Rect((hitbox.bottomright), (1, 1))
+        else: edge_rect = pygame.Rect((hitbox.bottomleft + vector(-2, 0)), (1, 1))
 
         if not self.facing_left: 
-            dangle_rect = pygame.Rect((self.hitbox_rect.topright + vector(0, (self.hitbox_rect.height / 1.8))), (1, 1))
-        else: dangle_rect = pygame.Rect((self.hitbox_rect.topleft + vector(-1, (self.hitbox_rect.height / 1.8))), (1, 1))
+            dangle_rect = pygame.Rect((hitbox.topright + vector(0, (hitbox.height / 1.8))), (1, 1))
+        else: dangle_rect = pygame.Rect((hitbox.topleft + vector(-1, (hitbox.height / 1.8))), (1, 1))
 
-        embrace_rect = pygame.Rect(self.hitbox_rect.center + vector(TILE_SIZE * 2, 0), (1, 1))
+        embrace_rect = pygame.Rect(self.hitbox_rect.center + vector(0, TILE_SIZE * 5), (1, 1))
 
-        self.on_surface["embrace"] = not self.is_touching(embrace_rect) and self.move_vector.y > 0
-        self.on_surface["climb-mantle"] = not self.is_touching(climb_rect) and any((self.on_surface["left"], self.on_surface["right"])) and self.climbing_active
+        # // core
         self.on_surface["floor"] = self.is_touching(floor_rect) 
         self.on_surface["left"] = self.is_touching(left_rect)
         self.on_surface["right"] = self.is_touching(right_rect)
+         
+        # // special 
+        self.on_surface["embrace"] = not self.is_touching(embrace_rect) and self.move_vector.y > 0
+        
+        self.on_surface["climb-mantle"] = not self.is_touching(climb_rect) and wall and self.climbing_active
+        
         if not self.is_touching(edge_rect) and self.is_touching(floor_rect) and not self.timers["balance_delay"].active:
+            print("ddddd")
             self.timers["balance_delay"].activate()  
         elif self.is_touching(edge_rect) >=0 and self.is_touching(floor_rect):
             self.timers["balance_delay"].deactivate()  
             self.on_surface['edge'] = False
-        self.on_surface["dangle"] = not self.is_touching(dangle_rect)  and any((self.on_surface["left"], self.on_surface["right"]))
+
+        self.on_surface["dangle"] = not self.is_touching(dangle_rect) and wall
+
+        if self.display_surface:
+            pygame.draw.rect(self.display_surface, (255, 0, 0), floor_rect)
+            pygame.draw.rect(self.display_surface, (0,255, 0), right_rect)
+            pygame.draw.rect(self.display_surface, (0, 0, 255), left_rect)
+            pygame.draw.rect(self.display_surface, (255, 255, 0), dangle_rect)
+            pygame.draw.rect(self.display_surface, (255, 0, 255), climb_rect)
+            pygame.draw.rect(self.display_surface, (0, 255, 255), edge_rect)
+            pygame.draw.rect(self.display_surface, (255, 255, 255), embrace_rect)
 
     def animate(self, dt):  
         now = self.now_state()
@@ -355,11 +387,11 @@ class Player(pygame.sprite.Sprite):
             self.image = pygame.transform.flip(self.image, True, False)
 
     def update(self, dt):
-        self.old_rect = self.hitbox_rect.copy()
         self.update_timers()
+        self.old_rect = self.hitbox_rect.copy()
         self.input()
         self.move(dt)
         self.contact()
         self.animate(dt)
-
+        
             
