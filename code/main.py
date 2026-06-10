@@ -18,6 +18,9 @@ class Game:
         self.current_stage = Level(self.internal_canvas, self.tmx_maps[0], self.level_frames)
         
     def import_images(self):
+        """
+        A dictionary that contains the graphics for the game. It Uses the support module to import the desired folders/files.
+        """
         self.level_frames = {
             "player" : import_sub_folder("graphics", "player")
         }
@@ -25,22 +28,22 @@ class Game:
 
     def run(self):
         while True:
+            # // delta-time
             dt = self.clock.tick(100) / 1000
 
-            # // events 
+            # // events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     exit()  
 
-            # // level
+            # // levels
             self.current_stage.run(dt)
     
-            # // scale screen
+            # // transformed canvas
             transformed_canvas = pygame.transform.scale_by(self.internal_canvas, SCALE)
             self.display_canvas.blit(transformed_canvas)
             pygame.display.flip()
-
 
 if __name__ == "__main__":
     Game().run()

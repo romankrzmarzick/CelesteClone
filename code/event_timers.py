@@ -3,10 +3,10 @@ from settings import *
 class Timer:
     def __init__(self, duration, repeat=False, func=None, auto_start=False):
         self.duration = duration
-        self.start_time = 0
-        self.active = False
         self.repeat = repeat
         self.func = func
+        self.start_time = 0
+        self.active = False
         if auto_start:
             self.activate()
 
