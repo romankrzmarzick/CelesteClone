@@ -2,8 +2,9 @@ from settings import *
 from event_timers import Timer
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, pos, groups, collision_sprites, frames, z=Z_LAYERS["main"]):
+    def __init__(self, pos, groups, collision_sprites, frames, z, s):
         # player general setup
+        self.surface = s
         super().__init__(groups)
         self.z = z
 
@@ -36,6 +37,8 @@ class Player(pygame.sprite.Sprite):
         # balance bool
         self.can_balance = False
 
+        self.is_sliding = False
+        
         # // player rects
         # player collisions
         self.collision_sprites = collision_sprites
@@ -48,19 +51,22 @@ class Player(pygame.sprite.Sprite):
         
         # old_rect is used for the collision logic to find location between two objects. 
         self.old_rect = self.hitbox_rect.copy()
+        self.old_dir = vector()
+
 
         self.collide_rects = []
 
         # detection rects that are based on the player's position for specified use cases. 
-        self.on_surface = {"floor" : False, "left" : False, "right" : False, "edge" : False, "dangle" : False, "embrace" : False, "climb-mantle" : False}
+        self.on_surface = {"floor" : False, "left" : False, "right" : False, "edge" : False, "dangle" : False, "embrace" : False, "mantle" : False}
 
         # // timers
         self.timers = {
-            "balance_delay" : Timer(1000, func=self.balance_animation),
+            "balance_delay" : Timer(500, func=self.balance_animation),
             "wall_jump" : Timer(190),
             "wall_jump_delay" : Timer(250),
             "dash" : Timer(290),
             "mantle" : Timer(100),
+            "coyote" : Timer(100),
         }
 
     def input(self):
@@ -149,7 +155,6 @@ class Player(pygame.sprite.Sprite):
             self.embrace = True
         if self.on_surface["floor"]:
             self.embrace = False
-        return self.embrace
 
     def balance_animation(self):
         self.can_balance = True
@@ -157,11 +162,11 @@ class Player(pygame.sprite.Sprite):
     def balance(self):
         on_edge = self.on_surface["edge"]
 
-        if on_edge and not self.timers["balance_delay"].active:
+        if on_edge and not self.timers["balance_delay"].active and self.on_surface["floor"]:
             self.timers["balance_delay"].activate()
-        elif not on_edge: 
+        if not on_edge or not self.on_surface["floor"]: 
             self.timers["balance_delay"].deactivate()
-            self.can_balance=False
+            self.can_balance=False 
 
     def mantle(self, dt):
         """
@@ -177,12 +182,12 @@ class Player(pygame.sprite.Sprite):
         The climb function allows the player to move up and down on a surface while canceling out the y-direction gravity.
         When the climb key is held, the player sticks to the wall without any outside forces. 
         """
-        if self.on_surface["climb"]:
+        if self.on_surface["mantle"]:
             self.timers["mantle"].activate()
         if self.timers["mantle"].active:
            self.mantle(dt)
         else:
-            if self.climbing and not self.on_surface["floor"] and not self.on_surface["climb"] and any((self.on_surface["left"], self.on_surface["right"])):
+            if self.climbing and not self.on_surface["floor"] and not self.on_surface["mantle"] and any((self.on_surface["left"], self.on_surface["right"])):
                 self.move_vector.y = 0
                 self.hitbox_rect.y += (PLAYER_PHYSICS.climbing_speed * self.dir_vector.y) * dt
                 self.climbing_active = True
@@ -193,8 +198,16 @@ class Player(pygame.sprite.Sprite):
             self.move_vector.x += PLAYER_PHYSICS.x_speed * self.dir_vector.x / 2
             if self.move_vector.x > PLAYER_PHYSICS.x_max_speed: self.move_vector.x = PLAYER_PHYSICS.x_max_speed
             elif self.move_vector.x < -PLAYER_PHYSICS.x_max_speed: self.move_vector.x = -PLAYER_PHYSICS.x_max_speed
+            
+              # x speed when moving from a wall.
+            if not self.on_surface["floor"]:
+                self.move_vector.x = (PLAYER_PHYSICS.mantle_x_speed * .8) * self.dir_vector.x
+        
+    
             self.hitbox_rect.x += self.move_vector.x * dt
             self.move_vector.x += PLAYER_PHYSICS.x_speed * self.dir_vector.x / 2
+            if self.move_vector.x > PLAYER_PHYSICS.x_max_speed: self.move_vector.x = PLAYER_PHYSICS.x_max_speed
+            elif self.move_vector.x < -PLAYER_PHYSICS.x_max_speed: self.move_vector.x = -PLAYER_PHYSICS.x_max_speed
         else: self.move_vector.x = 0
     
     def gravity(self, dt):
@@ -202,6 +215,7 @@ class Player(pygame.sprite.Sprite):
         self.move_vector.y = min(PLAYER_PHYSICS.max_fall_speed, self.move_vector.y)
         self.hitbox_rect.y += self.move_vector.y * dt
         self.move_vector.y += PLAYER_PHYSICS.gravity_num / 2 * dt
+        self.move_vector.y = min(PLAYER_PHYSICS.max_fall_speed, self.move_vector.y)
 
     def jump(self):
         """
@@ -219,15 +233,18 @@ class Player(pygame.sprite.Sprite):
         It does the same jump height for the y vector while pushing the object in the opposite direction from the wall.
         """
         self.timers["wall_jump"].activate()
+        self.move_vector.x = 0
         self.move_vector.y = -PLAYER_PHYSICS.jump_height
         self.dir_vector.x = 1 if self.on_surface["left"] else -1
 
     def wall_slide(self, dt):
         """Gets rid of the gravity influence on the player object to then slowly push the character downwards to represent slding."""
-        if not self.on_surface["floor"] and any((self.on_surface["left"], self.on_surface["right"])) and self.move_vector.y > 0 and not self.on_surface["climb"] and self.move_vector.x != 0:
+        if not self.on_surface["floor"] and any((self.on_surface["left"], self.on_surface["right"])) and self.move_vector.y > 0 and not self.on_surface["mantle"] and self.move_vector.x != 0:
             self.move_vector.y = 0
-            self.hitbox_rect.y += PLAYER_PHYSICS.gravity_num / 10 * dt
+            self.hitbox_rect.y += PLAYER_PHYSICS.gravity_num / 8 * dt
+            self.is_sliding = True
             return True
+        self.is_sliding = False
         return False
     
     def dash(self, dt):
@@ -289,13 +306,13 @@ class Player(pygame.sprite.Sprite):
             if self.can_balance:
                 return "balance"
             return "idle" if self.dir_vector.x == 0 else "run"
-        if wall:
-            if self.climbing and self.dir_vector.y < 0:
+        if wall and not self.on_surface["mantle"]:
+            if self.climbing and self.dir_vector.y != 0:
                 return "climb"
-            if self.move_vector.y >= 0:
-                return "wall"   
             if self.on_surface["dangle"]:
                 return "dangle"
+            if self.move_vector.y >= 0:
+                return "wall"   
         if self.move_vector.y < 0:
             return "jump"
         else:
@@ -308,9 +325,7 @@ class Player(pygame.sprite.Sprite):
         return rect.collidelist(self.collide_rects) >= 0
 
     def contact(self):
-        # helper variables to shorten lines of code.
-        wall = any((self.on_surface["left"], self.on_surface["right"]))
-        hitbox = self.hitbox_rect 
+        hitbox = self.hitbox_rect
 
         # grabs only the rect from the sprite to avoid passing in the entire sprite.
         self.collide_rects = [sprite.rect for sprite in self.collision_sprites]
@@ -320,34 +335,34 @@ class Player(pygame.sprite.Sprite):
         left_rect = pygame.Rect((hitbox.topleft + vector(-1, hitbox.height / 3)), (1, hitbox.height / 3))
         right_rect = pygame.Rect((hitbox.topright + vector(0, hitbox.height / 3)), (1, hitbox.height / 3))
 
-
         # speical contact rects.
         if not self.facing_left:
             climb_rect = pygame.Rect((hitbox.midright + vector(2, -4)), (1, 6))
         else: climb_rect = pygame.Rect((hitbox.midleft + vector(-3, -4)), (1, 6))
-    
-        if not self.facing_left:
-            edge_rect = pygame.Rect((hitbox.bottomright), (1, 1))
-        else: edge_rect = pygame.Rect((hitbox.bottomleft + vector(-2, 0)), (1, 1))
 
-        if not self.facing_left: 
+        if not self.facing_left:
+            edge_rect = pygame.Rect((hitbox.bottomright), (1, 4))
+        else: edge_rect = pygame.Rect((hitbox.bottomleft + vector(-1, 0)), (1, 4))
+
+        if not self.facing_left:
             dangle_rect = pygame.Rect((hitbox.topright + vector(0, (hitbox.height / 1.8))), (1, 1))
         else: dangle_rect = pygame.Rect((hitbox.topleft + vector(-1, (hitbox.height / 1.8))), (1, 1))
 
-        embrace_rect = pygame.Rect(self.hitbox_rect.center, (0, TILE_SIZE * 5))
+        embrace_rect = pygame.Rect(self.hitbox_rect.center, (1, TILE_SIZE * 5))
 
         # // core
-        self.on_surface["floor"] = self.is_touching(floor_rect) 
+        self.on_surface["floor"] = self.is_touching(floor_rect)
         self.on_surface["left"] = self.is_touching(left_rect)
         self.on_surface["right"] = self.is_touching(right_rect)
-         
-        # // special 
+        wall = any((self.on_surface["left"], self.on_surface["right"]))
+
+        # // special
         self.on_surface["embrace"] = not self.is_touching(embrace_rect) and self.move_vector.y > 0
-        
-        self.on_surface["climb"] = not self.is_touching(climb_rect) and wall and self.climbing_active
-        
+
+        self.on_surface["mantle"] = not self.is_touching(climb_rect) and wall and self.climbing_active
+
         self.on_surface["edge"] = True if not self.is_touching(edge_rect) and self.is_touching(floor_rect) else False
-           
+
         self.on_surface["dangle"] = not self.is_touching(dangle_rect) and wall
 
     def animate(self, dt):  
@@ -364,7 +379,7 @@ class Player(pygame.sprite.Sprite):
                 self.frame_index = 0
             self.doing_state = now
 
-        if not self.climbing_active and not self.timers["dash"].active:
+        if not self.climbing_active and not self.timers["dash"].active and not self.is_sliding:
             if self.dir_vector.x == 1: self.facing_left = False
             elif self.dir_vector.x == -1: self.facing_left = True
 

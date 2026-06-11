@@ -18,7 +18,7 @@ class Level:
         """
         for obj in tmx_map.get_layer_by_name("Entities"):
             if obj.name == "player":
-                self.player = Player((obj.x, obj.y), self.all_sprites, self.collision_sprites, level_frames["player"])
+                self.player = Player((obj.x, obj.y), self.all_sprites, self.collision_sprites, level_frames["player"], Z_LAYERS["main"], self.internal_canvas)
         
         for x, y, image in tmx_map.get_layer_by_name("Terrain").tiles():
             Sprite((x * TILE_SIZE, y * TILE_SIZE), image, (self.all_sprites, self.collision_sprites), z=Z_LAYERS["tiles"])

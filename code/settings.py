@@ -66,7 +66,7 @@ class PlayerPhysics:
     max_fall_speed : float = 160
     dash_speed     : float = 130
     climbing_speed : float = 50
-    mantle_x_speed : float = 65
+    mantle_x_speed : float = 75
     mantle_y_speed : float= 80
 
 PLAYER_PHYSICS = PlayerPhysics()
