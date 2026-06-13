@@ -2,9 +2,8 @@ from settings import *
 from event_timers import Timer
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, pos, groups, collision_sprites, frames, z, s):
+    def __init__(self, pos, groups, collision_sprites, frames, z):
         # player general setup
-        self.surface = s
         super().__init__(groups)
         self.z = z
 
@@ -47,7 +46,7 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.image.get_frect(center=pos)
         
         # an inflated rect that interacts with the collidable rects.
-        self.hitbox_rect = self.rect.inflate((-4, 0))
+        self.hitbox_rect = self.rect.inflate((-8, -4))
         
         # old_rect is used for the collision logic to find location between two objects. 
         self.old_rect = self.hitbox_rect.copy()
@@ -75,15 +74,16 @@ class Player(pygame.sprite.Sprite):
         
         if not self.timers["dash"].active:
             if not self.timers["wall_jump"].active:
-                if keys[pygame.K_RIGHT]:
-                    input_dir.x = 1
-                if keys[pygame.K_LEFT]:
-                    input_dir.x = - 1
-                if keys[pygame.K_UP]:
-                    input_dir.y = -1
-                if keys[pygame.K_DOWN]:
-                    input_dir.y =  1
-                self.dir_vector = input_dir
+                if not self.timers["mantle"].active:
+                    if keys[pygame.K_RIGHT]:
+                        input_dir.x = 1
+                    if keys[pygame.K_LEFT]:
+                        input_dir.x = - 1
+                    if keys[pygame.K_UP]:
+                        input_dir.y = -1
+                    if keys[pygame.K_DOWN]:
+                        input_dir.y =  1
+                    self.dir_vector = input_dir
 
 
         if keys[pygame.K_UP] and not self.crouching and not self.climbing_active:
@@ -107,19 +107,24 @@ class Player(pygame.sprite.Sprite):
         self.balance()
 
         # // climb
-        self.climb(dt)
-        if self.climbing_active:
-            self.collisions("x")
-            self.collisions("y")
+        if not self.timers['mantle'].active:
+            self.climb(dt)
+            if self.climbing_active:
+                self.collisions("x")
+                self.collisions("y")
+                self.update_rect()
+                return
+        elif self.timers["mantle"].active:
+            self.mantle(dt)
             self.update_rect()
             return
 
         # // crouching switch
-        if self.crouching and self.on_surface["floor"]:
+        if self.crouching and self.on_surface["floor"] and self.state == "crouch":
             return
         
         # // dash
-        if self.dash(dt):
+        if self.dash(dt) and not self.timers["mantle"].active:
             self.collisions("x")
             self.collisions("y")
             self.update_rect()
@@ -184,8 +189,7 @@ class Player(pygame.sprite.Sprite):
         """
         if self.on_surface["mantle"]:
             self.timers["mantle"].activate()
-        if self.timers["mantle"].active:
-           self.mantle(dt)
+        
         else:
             if self.climbing and not self.on_surface["floor"] and not self.on_surface["mantle"] and any((self.on_surface["left"], self.on_surface["right"])):
                 self.move_vector.y = 0
@@ -201,14 +205,14 @@ class Player(pygame.sprite.Sprite):
             
               # x speed when moving from a wall.
             if not self.on_surface["floor"]:
-                self.move_vector.x = (PLAYER_PHYSICS.mantle_x_speed * .8) * self.dir_vector.x
+                self.move_vector.x = (PLAYER_PHYSICS.x_max_speed * .8) * self.dir_vector.x
         
     
             self.hitbox_rect.x += self.move_vector.x * dt
             self.move_vector.x += PLAYER_PHYSICS.x_speed * self.dir_vector.x / 2
             if self.move_vector.x > PLAYER_PHYSICS.x_max_speed: self.move_vector.x = PLAYER_PHYSICS.x_max_speed
             elif self.move_vector.x < -PLAYER_PHYSICS.x_max_speed: self.move_vector.x = -PLAYER_PHYSICS.x_max_speed
-        else: self.move_vector.x = 0
+        if self.dir_vector.x == 0: self.move_vector.x = 0
     
     def gravity(self, dt):
         self.move_vector.y += PLAYER_PHYSICS.gravity_num / 2 * dt 
@@ -262,11 +266,10 @@ class Player(pygame.sprite.Sprite):
     def update_rect(self):
         """A custom updating func for the self.rect based on the hitbox rect to fix animations."""
         # Below adjusts the climb and wall animation to draw one more px over in the facing direction.
-        if self.state == "climb" or self.state == "wall":
-            if self.facing_left:
-                self.rect.center = self.hitbox_rect.center - vector(1, 0)
-            else: self.rect.center = self.hitbox_rect.center - vector(-1, 0)
-        else: self.rect.center = self.hitbox_rect.center
+        redraw_num = ANIMATION_CORRECTION["player"][self.state]
+        if self.facing_left:
+            self.rect.center = self.hitbox_rect.center + redraw_num
+        else: self.rect.center = self.hitbox_rect.center + vector(-redraw_num.x, redraw_num.y)
 
     def collisions(self, direction):
         hitbox = self.hitbox_rect
@@ -296,7 +299,7 @@ class Player(pygame.sprite.Sprite):
 
     def now_state(self):
         wall = any((self.on_surface["right"], self.on_surface["left"]))
-        if self.timers["dash"].active and not self.climbing and self.dir_vector != vector(0, 0):
+        if self.timers["dash"].active and not self.climbing and self.dir_vector != vector(0, 0) and not self.state == "crouch":
             return "dash"
         if self.on_surface["floor"]:
             if wall and self.dir_vector.x != 0:
@@ -315,11 +318,13 @@ class Player(pygame.sprite.Sprite):
                 return "wall"   
         if self.move_vector.y < 0:
             return "jump"
-        else:
+        
+        if self.move_vector.y > 0:
             if self.embrace:
                 return "embrace"
             return "fall"
-
+        return "idle"
+    
     def is_touching(self, rect):
         """Helper function for contact. Looks to see if the passed in rect collides with any thing."""
         return rect.collidelist(self.collide_rects) >= 0
@@ -337,12 +342,12 @@ class Player(pygame.sprite.Sprite):
 
         # speical contact rects.
         if not self.facing_left:
-            climb_rect = pygame.Rect((hitbox.midright + vector(2, -4)), (1, 6))
-        else: climb_rect = pygame.Rect((hitbox.midleft + vector(-3, -4)), (1, 6))
+            climb_rect = pygame.Rect((hitbox.midright + vector(2, -7)), (1, 7))
+        else: climb_rect = pygame.Rect((hitbox.midleft + vector(-3, -7)), (1, 7))
 
         if not self.facing_left:
-            edge_rect = pygame.Rect((hitbox.bottomright), (1, 4))
-        else: edge_rect = pygame.Rect((hitbox.bottomleft + vector(-1, 0)), (1, 4))
+            edge_rect = pygame.Rect((hitbox.bottomright - vector(1, 0)), (1, 4))
+        else: edge_rect = pygame.Rect((hitbox.bottomleft), (1, 4))
 
         if not self.facing_left:
             dangle_rect = pygame.Rect((hitbox.topright + vector(0, (hitbox.height / 1.8))), (1, 1))
@@ -399,6 +404,5 @@ class Player(pygame.sprite.Sprite):
         self.contact()
         self.move(dt)
         self.animate(dt)
-
 
             

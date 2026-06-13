@@ -46,6 +46,26 @@ ANIMATION_TRANSITIONS = {
     }
 }
 
+ANIMATION_CORRECTION = {
+    "player" : {
+        "idle" : vector(0, -2),
+        "run" : vector(0, -2),
+        "crouch" : vector(0, -2),
+        "push" : vector(2, -2),
+        "jump" : vector(0, -2),
+        "wall" : vector(1, -2),
+        "fall" : vector(0, -2),
+        "embrace" : vector(0, -2),
+        "climb" : vector(1, -2),
+        "balance" : vector(1, -2),
+        "dash" : vector(1, -2),
+        "fall-ground" : vector(0, -2),
+        "ground-jump" : vector(0, -2),
+        "death" :  vector(0, -2),
+        "dangle" : vector(2, -2),
+    } 
+}
+
 # z-layers
 Z_LAYERS = {
 	'bg': 0,
@@ -66,7 +86,7 @@ class PlayerPhysics:
     max_fall_speed : float = 160
     dash_speed     : float = 130
     climbing_speed : float = 50
-    mantle_x_speed : float = 75
+    mantle_x_speed : float = 40
     mantle_y_speed : float= 80
 
 PLAYER_PHYSICS = PlayerPhysics()
