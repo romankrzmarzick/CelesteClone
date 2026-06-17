@@ -68,6 +68,8 @@ class Player(pygame.sprite.Sprite):
             "coyote" : Timer(100),
         }
 
+        self.dead = False
+
     def input(self):
         input_dir = vector()
         keys = pygame.key.get_pressed()
@@ -298,6 +300,9 @@ class Player(pygame.sprite.Sprite):
             timer.update()
 
     def now_state(self):
+        if self.dead:
+            return "death"
+
         wall = any((self.on_surface["right"], self.on_surface["left"]))
         if self.timers["dash"].active and not self.climbing and self.dir_vector != vector(0, 0) and not self.state == "crouch":
             return "dash"
@@ -392,17 +397,23 @@ class Player(pygame.sprite.Sprite):
         frames = self.frames[self.state]
         if not ANIMATION_INFO["player"][self.state][1] and int(self.frame_index) >= len(frames):
             self.image = frames[-1]
+            if self.dead:
+                self.kill()
         else: 
             self.image = frames[int(self.frame_index) % len(frames)]
         if not self.facing_left:
             self.image = pygame.transform.flip(self.image, True, False)
 
+
+
+
     def update(self, dt):
         self.update_timers()
-        self.old_rect = self.hitbox_rect.copy()
-        self.input()
-        self.contact()
-        self.move(dt)
+        if not self.dead:
+            self.old_rect = self.hitbox_rect.copy()
+            self.input()
+            self.contact()
+            self.move(dt)
         self.animate(dt)
 
             
