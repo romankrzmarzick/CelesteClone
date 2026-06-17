@@ -65,7 +65,7 @@
   <object id="14" x="284" y="95.75" width="3.25" height="22.5"/>
  </objectgroup>
  <objectgroup id="5" name="Entities">
-  <object id="11" name="player" x="30.6667" y="82">
+  <object id="11" name="player" x="23.8846" y="128.179">
    <point/>
   </object>
  </objectgroup>

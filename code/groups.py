@@ -13,3 +13,5 @@ class AllSprites(pygame.sprite.Group):
         for sprite in sorted(self, key=lambda s: s.z): # controlled draw method
             self.internal_canvas.blit(sprite.image, sprite.rect.topleft)
     
+    
+    
