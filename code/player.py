@@ -302,7 +302,7 @@ class Player(pygame.sprite.Sprite):
         if self.timers["dash"].active and not self.climbing and self.dir_vector != vector(0, 0) and not self.state == "crouch":
             return "dash"
         if self.on_surface["floor"]:
-            if wall and self.dir_vector.x != 0:
+            if wall and self.dir_vector.x != 0 and not self.is_jumping:
                 return "push"
             if self.crouching:
                 return "crouch"

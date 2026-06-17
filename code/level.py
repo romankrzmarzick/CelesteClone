@@ -18,13 +18,13 @@ class Level:
         """
         for obj in tmx_map.get_layer_by_name("Entities"):
             if obj.name == "player":
-                self.player = Player((obj.x, obj.y), self.all_sprites, self.collision_sprites, level_frames["player"], Z_LAYERS["main"])
+                self.player = Player((obj.x, obj.y), self.all_sprites, self.collision_sprites, level_frames["player"], Z_LAYERS["tile_details"])
         
         for x, y, image in tmx_map.get_layer_by_name("Terrain").tiles():
-            Sprite((x * TILE_SIZE, y * TILE_SIZE), image, (self.all_sprites, self.collision_sprites), z=Z_LAYERS["tiles"])
+            Sprite((x * TILE_SIZE, y * TILE_SIZE), image, (self.all_sprites, self.collision_sprites), z=Z_LAYERS["main"])
 
         for x, y, image, in tmx_map.get_layer_by_name("Spikes").tiles():
-            Sprite((x * TILE_SIZE, y * TILE_SIZE), image, self.all_sprites, z=Z_LAYERS["tile_details"])
+            Sprite((x * TILE_SIZE, y * TILE_SIZE), image, self.all_sprites, z=Z_LAYERS["tiles"])
 
     def run(self, dt):
         # background fill
