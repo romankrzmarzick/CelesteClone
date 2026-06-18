@@ -99,10 +99,11 @@ class Player(pygame.sprite.Sprite):
 
         if keys[pygame.K_SPACE]:
             self.climbing = True
+    
         else: self.climbing = False
 
         if keys[pygame.K_x]:
-            if not self.timers["dash_delay"].active:
+            if not self.timers["dash_delay"].active and not self.climbing:
                 if self.can_dash and not self.timers["wall_jump"].active:
                     self.timers["dash"].activate()
                     self.old_dir = input_dir
