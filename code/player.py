@@ -65,7 +65,8 @@ class Player(pygame.sprite.Sprite):
             "wall_jump_delay" : Timer(250),
             "dash" : Timer(290),
             "mantle" : Timer(100),
-            "coyote" : Timer(100),
+            "coyote" : Timer(230),
+            "dash_delay" : Timer(230)
         }
 
         self.dead = False
@@ -95,14 +96,16 @@ class Player(pygame.sprite.Sprite):
             self.crouching = True
         else: self.crouching = False
         
-        if keys[pygame.K_x]:
-            if self.can_dash and not self.timers["wall_jump"].active:
-                self.timers["dash"].activate()
-                self.old_dir = input_dir
 
         if keys[pygame.K_SPACE]:
             self.climbing = True
         else: self.climbing = False
+
+        if keys[pygame.K_x]:
+            if not self.timers["dash_delay"].active:
+                if self.can_dash and not self.timers["wall_jump"].active:
+                    self.timers["dash"].activate()
+                    self.old_dir = input_dir
 
     def move(self, dt):
         self.is_embrace()
@@ -115,7 +118,9 @@ class Player(pygame.sprite.Sprite):
                 self.collisions("x")
                 self.collisions("y")
                 self.update_rect()
+                self.timers["dash_delay"].activate()
                 return
+            
         elif self.timers["mantle"].active:
             self.mantle(dt)
             self.update_rect()
@@ -126,7 +131,7 @@ class Player(pygame.sprite.Sprite):
             return
         
         # // dash
-        if self.dash(dt) and not self.timers["mantle"].active:
+        if self.dash(dt):
             self.collisions("x")
             self.collisions("y")
             self.update_rect()
@@ -145,7 +150,8 @@ class Player(pygame.sprite.Sprite):
 
         # // jumps
         if self.is_jumping:
-            if self.on_surface["floor"]:
+            if self.on_surface["floor"] or self.timers["coyote"].active:
+                self.timers["coyote"].deactivate()
                 self.jump()
             if not self.timers["wall_jump_delay"].active and any((self.on_surface["left"], self.on_surface["right"])):
                 self.wall_jump()
@@ -257,7 +263,7 @@ class Player(pygame.sprite.Sprite):
         if self.on_surface["floor"]:
             self.can_dash = True
 
-        if self.timers["dash"].active and self.dir_vector != vector(0, 0):
+        if self.timers["dash"].active and self.dir_vector != vector(0, 0) and self.state != "wall" and self.state != "climb" and not self.timers["mantle"].active:
             normalized_dir = self.old_dir.normalize() if self.old_dir else self.old_dir
             self.can_dash = False
             self.move_vector = vector(0, 0)
@@ -332,6 +338,10 @@ class Player(pygame.sprite.Sprite):
     
     def is_touching(self, rect):
         """Helper function for contact. Looks to see if the passed in rect collides with any thing."""
+        # coyote time
+        if self.on_surface["floor"] and not rect.collidelist(self.collide_rects) >= 0 and not self.timers["coyote"].active:
+            self.timers["coyote"].activate()
+        
         return rect.collidelist(self.collide_rects) >= 0
 
     def contact(self):
