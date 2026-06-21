@@ -26,7 +26,7 @@ class Game:
     def run(self):
         while True:
             # // delta-time
-            dt = self.clock.tick(100) / 1000
+            dt = self.clock.tick() / 1000
 
             # // events
             for event in pygame.event.get():

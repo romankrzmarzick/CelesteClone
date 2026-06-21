@@ -8,7 +8,7 @@ from pygame.time import get_ticks
 
 # Screen parameters
 WINDOW_WIDTH, WINDOW_HEIGHT = 320, 180
-SCALE = 4
+SCALE = 5
 
 # Tiles
 TILE_SIZE = 8
