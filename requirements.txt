@@ -1,0 +1,5 @@
+# Verified against Python 3.14.6 on Windows.
+# Note: pygame-ce, NOT pygame. The code uses get_frect(), which only exists in
+# the community edition — installing plain `pygame` will break on startup.
+pygame-ce>=2.5.0
+PyTMX>=3.32
