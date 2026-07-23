@@ -1,30 +1,62 @@
+"""Asset loading helpers -- turning folders of .png files into frame lists."""
+
 from settings import *
 
-def import_image(*path, alpha=True, format='.png'):
+
+def import_image(*path: str, alpha: bool = True, format: str = ".png") -> pygame.Surface:
     """
-    The import_image is a simple function to always create the correct path for the pygame load image method.
+    Load a single image, building the path with the right separator for the OS.
+
+    Args:
+        *path:  path segments, e.g. import_image("graphics", "ui", "heart").
+        alpha:  True keeps per-pixel transparency, False is for opaque images.
+                Either way the conversion makes every later blit much faster.
+                Needs the display mode to be set first, which Game.__init__
+                does before loading anything.
+        format: file extension appended to the joined path.
+
+    Returns:
+        The loaded, display-converted surface.
     """
     full_path = join(*path) + f"{format}"
     surf = pygame.image.load(full_path)
-    return surf 
+    return surf.convert_alpha() if alpha else surf.convert()
 
-def import_folder(*path):
+
+def import_folder(*path: str) -> list[pygame.Surface]:
     """
-    Import_folder will look at an entire folder and sort the files numerically. 
-    It will loop through using the join to create the needed path to find the file. 
-    Inserts the path in the pygame image load method to create the surface image. 
-    Finally it appends it to the frames and when the for loop has iterated over all files only then it returns frames.
+    Load every image in one folder, in numeric filename order.
+
+    Alphabetical sorting would put "10.png" before "2.png", so the key parses
+    the filename as an int -- meaning **every frame must be named with a bare
+    number**, or this raises ValueError.
+
+    Args:
+        *path: path segments to a single animation folder.
+
+    Returns:
+        Surfaces in frame order.
     """
     frames = []
     for full_path, _, file_images in walk(join(*path)):
         for file_image in sorted(file_images, key=lambda name: int(name.split(".")[0])):
-            frames.append(pygame.image.load(join(full_path, file_image)))
+            frames.append(pygame.image.load(join(full_path, file_image)).convert_alpha())
     return frames
 
-def import_sub_folder(*path):
+
+def import_sub_folder(*path: str) -> dict[str, list[pygame.Surface]]:
     """
-    The import_sub_folder function does two things. First it will only look at the subfolders in the path given to it.
-    Second, for each sub folder it will use the import_folder function and its name to create a dictionary containing the frames.  
+    Load a folder of animation folders into a dict keyed by folder name.
+
+    `import_sub_folder("graphics", "player")` gives back
+    `{"idle": [...frames], "run": [...frames], ...}` -- exactly what Player
+    expects. The keys must match the state names in ANIMATION_INFO.
+
+    Args:
+        *path: path segments to the parent folder.
+
+    Returns:
+        Mapping of subfolder name -> frames in order.
     """
     frames = {}
     for _, sub_folders, _ in walk(join(*path)):
@@ -32,4 +64,3 @@ def import_sub_folder(*path):
             for sub_folder in sub_folders:
                 frames[sub_folder] = import_folder(join(*path, sub_folder))
     return frames
-
