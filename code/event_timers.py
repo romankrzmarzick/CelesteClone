@@ -1,29 +1,8 @@
-"""A small wall-clock timer used for every timed rule in the game."""
-
 from settings import *
 from typing import Callable
 
 
 class Timer:
-    """
-    A one-shot (or repeating) countdown driven by pygame's millisecond clock.
-
-    The pattern: something calls `activate()`, other code checks
-    `if timer.active:` to see whether the window is still open, and `update()`
-    runs once per frame to close it. Durations are real milliseconds, not dt,
-    so timers never drift with framerate.
-
-    Args:
-        duration:   how long the timer stays active, in milliseconds.
-        repeat:     restart automatically the moment it expires.
-        func:       optional callback fired once, at the moment it expires.
-        auto_start: start counting immediately on construction.
-
-    Example -- the coyote window in Player:
-        self.timers["coyote"].activate()          # just left the ground
-        if self.timers["coyote"].active: jump()   # late jump still allowed
-    """
-
     def __init__(
         self,
         duration: int,

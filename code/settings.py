@@ -1,19 +1,3 @@
-"""
-Global configuration, and the shared import surface for the whole game.
-
-Every module does `from settings import *`, so this is also where the common
-names (pygame, vector, join, walk, load_pygame) enter them -- if you can't find
-where something came from, it came from here.
-
-Contents:
-    - screen / loop / tile constants
-    - ANIMATION_INFO         playback speed + looping per clip
-    - ANIMATION_TRANSITIONS  one-shot clips played between two states
-    - ANIMATION_CORRECTION   per-clip pixel nudge when drawing
-    - Z_LAYERS               draw order
-    - PlayerPhysics          every tunable movement number
-"""
-
 from dataclasses import dataclass
 import pygame, sys
 from pytmx.util_pygame import load_pygame

@@ -11,48 +11,6 @@ from event_timers import Timer
 
 
 class Player(pygame.sprite.Sprite):
-    """
-    A Celeste-style platforming character.
-
-    One frame, in order (see `update`):
-
-        update_timers()  tick every countdown
-        old_rect         where the hitbox was, for collision resolution
-        input()          keyboard -> dir_vector + mode flags
-        contact()        probe the world -> on_surface
-        move()           run one movement mode, then resolve collisions
-        animate()        pick a state, step the frames
-
-    `contact` runs before `move` so every movement decision is made against the
-    world as it was at the start of the frame.
-
-    Rects:
-        hitbox_rect  the physical player, 7x13. All movement and collision.
-        rect         where the image is drawn. Follows the hitbox each frame,
-                     plus a cosmetic per-animation nudge.
-        old_rect     the hitbox last frame. Tells `collisions` which side of a
-                     tile was hit.
-
-    Vectors:
-        dir_vector   input intent; each component is -1, 0 or 1.
-        move_vector  velocity in pixels/second.
-
-    `on_surface` is a dict of booleans rebuilt each frame by `contact` -- see
-    that method for what each probe means.
-
-    `move` is a priority chain: mantle > climb > crouch > dash > walking. The
-    first mode that applies returns early, which is why a mantle cannot be
-    interrupted and a dash ignores gravity.
-
-    Timers, all in milliseconds, each gating one rule:
-        balance_delay    wait before the idle teeter animation
-        wall_jump        lock out steering after a wall jump
-        wall_jump_delay  stops a jump instantly becoming a wall jump
-        dash, dash_delay dash duration, then its cooldown
-        mantle           ledge pull-up duration
-        coyote           late-jump grace after walking off a ledge
-    """
-
     def __init__(
         self,
         pos: tuple[float, float],
@@ -63,7 +21,7 @@ class Player(pygame.sprite.Sprite):
     ) -> None:
         """
         Args:
-            pos:               spawn point, used as the centre of `rect`.
+            pos:               spawn point, used as the center of `rect`.
             groups:            sprite group(s) to join, normally all_sprites.
             collision_sprites: the solid terrain to collide against.
             frames:            {animation_name: [surfaces]} from import_sub_folder.
@@ -331,7 +289,7 @@ class Player(pygame.sprite.Sprite):
             if self.move_vector.x > PLAYER_PHYSICS.x_max_speed: self.move_vector.x = PLAYER_PHYSICS.x_max_speed
             elif self.move_vector.x < -PLAYER_PHYSICS.x_max_speed: self.move_vector.x = -PLAYER_PHYSICS.x_max_speed
 
-              # x speed when moving from a wall.
+            # x speed when moving from a wall.
             if not self.on_surface["floor"]:
                 self.move_vector.x = (PLAYER_PHYSICS.x_max_speed * .8) * self.dir_vector.x
 
@@ -519,17 +477,6 @@ class Player(pygame.sprite.Sprite):
         return "idle"
 
     def is_touching(self, rect: pygame.Rect) -> bool:
-        """
-        Helper function for contact. Looks to see if the passed in rect collides with any thing.
-
-        A pure query -- no side effects.
-
-        Args:
-            rect: a probe rect in world space.
-
-        Returns:
-            True if it overlaps any collidable tile.
-        """
         return rect.collidelist(self.collide_rects) >= 0
 
     def contact(self) -> None:

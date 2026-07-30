@@ -1,5 +1,3 @@
-"""One playable stage: builds the world from a Tiled map and runs it."""
-
 from settings import *
 from sprites import *
 from player import *
