@@ -1,11 +1,3 @@
-"""
-The player character: input, movement, collision, and animation.
-
-This is the heart of the game. Read the Player class docstring first -- it lays
-out the order things happen in a frame, which is what makes the rest of the
-file make sense.
-"""
-
 from settings import *
 from event_timers import Timer
 
@@ -19,14 +11,7 @@ class Player(pygame.sprite.Sprite):
         frames: dict[str, list[pygame.Surface]],
         z: int,
     ) -> None:
-        """
-        Args:
-            pos:               spawn point, used as the center of `rect`.
-            groups:            sprite group(s) to join, normally all_sprites.
-            collision_sprites: the solid terrain to collide against.
-            frames:            {animation_name: [surfaces]} from import_sub_folder.
-            z:                 draw layer, see Z_LAYERS.
-        """
+    
         # player general setup
         super().__init__(groups)
         self.z = z
@@ -98,15 +83,6 @@ class Player(pygame.sprite.Sprite):
         self.dead = False
 
     def input(self) -> None:
-        """
-        Read the keyboard into `dir_vector` and the mode flags.
-
-        Arrows move, Up jumps, Down crouches, Space grips a wall, X dashes.
-
-        Steering is suppressed during a dash, wall jump, or mantle: those moves
-        own the direction for their duration, so `dir_vector` keeps its old
-        value instead of being overwritten.
-        """
         input_dir = vector()
         keys = pygame.key.get_pressed()
 
@@ -145,21 +121,6 @@ class Player(pygame.sprite.Sprite):
                     self.old_dir = input_dir
 
     def move(self, dt: float) -> None:
-        """
-        Run one frame of movement, then resolve collisions.
-
-        A priority chain -- each mode that takes over returns early, so only
-        one is ever in charge:
-
-            1. mantle   pulling over a ledge, uninterruptible
-            2. climb    gripping a wall, gravity cancelled
-            3. crouch   held still mid-crouch clip
-            4. dash     fixed-speed burst, gravity cancelled
-            5. default  wall slide or gravity, then walking, then jumps
-
-        In the default path y moves and resolves before x. Splitting the axes
-        is what stops the player snagging on tile seams.
-        """
         self.is_embrace()
         self.balance()
 
@@ -216,10 +177,6 @@ class Player(pygame.sprite.Sprite):
         self.update_rect()
 
     def is_embrace(self) -> None:
-        """
-        This function is used to set the embrace bool according to the state of the embrace surface when falling.
-        If the player is high above the ground when it reaches its time to switch to its fall state the embrace/longfall will be switched to True.
-        """
         if self.on_surface["embrace"]:
             self.embrace = True
         if self.on_surface["floor"]:
@@ -230,12 +187,6 @@ class Player(pygame.sprite.Sprite):
         self.can_balance = True
 
     def balance(self) -> None:
-        """
-        Gate the ledge-teetering animation behind a short idle delay.
-
-        Standing on an edge starts the timer; leaving the edge or the floor
-        cancels it, so the teeter only shows up after loitering on a ledge.
-        """
         on_edge = self.on_surface["edge"]
 
         if on_edge and not self.timers["balance_delay"].active and self.on_surface["floor"]:
@@ -245,23 +196,11 @@ class Player(pygame.sprite.Sprite):
             self.can_balance=False
 
     def mantle(self, dt: float) -> None:
-        """
-        The mantle recorrects the player's position when it is above the top surface of a rect when climbing.
-        This is needed to avoid the rect collision correction, because otherwise the player wouldn't be able to clear the edge.
-        """
         self.hitbox_rect.y += -PLAYER_PHYSICS.mantle_y_speed * dt
         self.dir_vector.x = -1 if self.facing_left else 1
         self.hitbox_rect.x += PLAYER_PHYSICS.mantle_x_speed * self.dir_vector.x * dt
 
     def climb(self, dt: float) -> None:
-        """
-        The climb function allows the player to move up and down on a surface while canceling out the y-direction gravity.
-        When the climb key is held, the player sticks to the wall without any outside forces.
-
-        If the hand probe has cleared the wall top this hands off to the mantle
-        instead, which is how the player gets over a ledge rather than being
-        stopped dead by collision correction.
-        """
         if self.on_surface["mantle"]:
             self.timers["mantle"].activate()
 
@@ -390,21 +329,6 @@ class Player(pygame.sprite.Sprite):
         else: self.rect.center = self.hitbox_rect.center + vector(-redraw_num.x, redraw_num.y)
 
     def collisions(self, direction: str) -> None:
-        """
-        Push the hitbox back out of any terrain it has moved into.
-
-        Called once per axis, after that axis has moved. `old_rect` decides
-        which side the overlap came from: if the player used to be left of a
-        tile and now overlaps it, they hit its left face and snap flush. Using
-        last frame's position is what stops fast movement ejecting the player
-        out of the wrong side.
-
-        Hitting a wall sideways also cancels a dash, so dashing into a wall
-        stops dead instead of grinding along it.
-
-        Args:
-            direction: "x" for horizontal, anything else for vertical.
-        """
         hitbox = self.hitbox_rect
 
         for sprite in self.collision_sprites:
@@ -480,31 +404,6 @@ class Player(pygame.sprite.Sprite):
         return rect.collidelist(self.collide_rects) >= 0
 
     def contact(self) -> None:
-        """
-        Rebuild `on_surface` by probing the world with thin feeler rects.
-
-        Each question gets its own 1px rect just outside the hitbox, so the
-        answers stay independent and precise. The probes that ask about the
-        *leading* edge flip sides with `facing_left`.
-
-            floor       strip along the bottom edge.
-            left/right  strips down the middle third of each side, so a shallow
-                        ledge at head or foot height isn't counted as a wall.
-            climb       7px beside the upper body; once it touches nothing the
-                        hand has cleared the wall top -> mantle.
-            edge        4px below the leading foot; nothing there while standing
-                        means the player is on a ledge.
-            dangle      1px beside the upper body; nothing there while on a wall
-                        means the upper body is over the lip.
-            embrace     5 tiles below the centre; nothing there while falling
-                        means a long drop -> curled-up clip.
-
-        Careful: "mantle", "edge", "dangle" and "embrace" are true when their
-        probe touches *nothing*.
-
-        This is also the only place that knows the floor state both before and
-        after the update, so it is where coyote time gets armed.
-        """
         hitbox = self.hitbox_rect
 
         # grabs only the rect from the sprite to avoid passing in the entire sprite.
@@ -555,21 +454,6 @@ class Player(pygame.sprite.Sprite):
             self.timers["coyote"].activate()
 
     def animate(self, dt: float) -> None:
-        """
-        Advance the sprite animation and pick this frame's image.
-
-        1. Transition clips. If the state being left and the one being entered
-           are a pair in ANIMATION_TRANSITIONS (landing, or springing into a
-           jump), that one-shot clip plays instead and finishes before anything
-           can interrupt it -- the `clip_in_progress` guard.
-        2. Facing. Frozen while climbing, dashing, or wall sliding so the
-           character doesn't flip mid-move.
-        3. Frames. `frame_index` advances by the clip's fps * dt. Looping clips
-           wrap; one-shot clips hold the last frame -- and if that was the
-           death clip, the sprite kills itself so Level can swap in a new one.
-
-        The art is drawn facing left, so it is mirrored when facing right.
-        """
         now = self.now_state()
         transitional_clips = ANIMATION_TRANSITIONS["player"].values()
         transition_playing = self.state in transitional_clips
@@ -599,13 +483,6 @@ class Player(pygame.sprite.Sprite):
             self.image = pygame.transform.flip(self.image, True, False)
 
     def update(self, dt: float) -> None:
-        """
-        One frame of the player, called by AllSprites.update.
-
-        While dead, input/contact/movement are skipped so the body freezes
-        where it fell, but `animate` keeps running so the death clip plays out
-        and eventually `kill()`s the sprite.
-        """
         self.update_timers()
         if not self.dead:
             self.old_rect = self.hitbox_rect.copy()

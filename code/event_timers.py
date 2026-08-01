@@ -30,13 +30,6 @@ class Timer:
             self.activate()
 
     def update(self) -> None:
-        """
-        Called once per frame. Expires the timer, and fires `func`, when the
-        duration has elapsed.
-
-        The `active` guard matters: without it an expired timer keeps passing
-        the time check every frame and re-fires `func` forever.
-        """
         if not self.active:
             return
 

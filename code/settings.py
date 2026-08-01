@@ -13,7 +13,7 @@ WINDOW_WIDTH, WINDOW_HEIGHT = 320, 180
 SCALE = 5
 
 # --- Loop timing -------------------------------------------------------------
-FRAMERATE = 60   # loop cap; the physics is dt-scaled, so this just spares the CPU
+FRAMERATE = 120  # loop cap; the physics is dt-scaled, so this just spares the CPU
 MAX_DT = 0.05    # largest dt a frame may report (0.05 = 20 FPS); a hitch then
                  # runs in slow motion instead of tunnelling through a wall
 
