@@ -18,9 +18,7 @@ class Level:
 
         self.setup(tmx_map, level_frames)
 
-        # Delay between dying and popping back in, long enough for the death
-        # animation to play out.
-        self.respawn_timer = Timer(3500, func=self.player_spawn)
+        self.respawn_timer = Timer(3500, func=self.player_spawn)  # gives the death animation time to finish
 
     def setup(self, tmx_map, level_frames: dict) -> None:
         for obj in tmx_map.get_layer_by_name("Entities"):
@@ -38,14 +36,12 @@ class Level:
             Sprite((obj.x, obj.y), pygame.Surface((obj.width, obj.height)), self.spike_sprites, z=Z_LAYERS["tiles"])
 
     def death_collide(self) -> None:
-        """Flag the player as dead if their hitbox overlaps any kill volume."""
         if self.spike_sprites:
             for sprite in self.spike_sprites:
                 if self.player.hitbox_rect.colliderect(sprite):
                     self.player.dead = True
 
     def respawn(self) -> None:
-        """Start the respawn countdown, once, on the frame the player dies."""
         if self.player.dead and not self.respawn_timer.active:
             self.respawn_timer.activate()
 

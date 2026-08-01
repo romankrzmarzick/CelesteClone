@@ -6,24 +6,16 @@ from os import walk
 from pygame.math import Vector2 as vector
 from pygame.time import get_ticks
 
-# --- Screen parameters -------------------------------------------------------
-# The game renders at this low resolution onto an internal canvas, then scales
-# up by SCALE to fill the window. All game logic works in these small pixels.
+# game renders at this low res onto an internal canvas, then gets scaled up by SCALE
 WINDOW_WIDTH, WINDOW_HEIGHT = 320, 180
 SCALE = 5
 
-# --- Loop timing -------------------------------------------------------------
-FRAMERATE = 120  # loop cap; the physics is dt-scaled, so this just spares the CPU
-MAX_DT = 0.05    # largest dt a frame may report (0.05 = 20 FPS); a hitch then
-                 # runs in slow motion instead of tunnelling through a wall
+FRAMERATE = 120
+MAX_DT = 0.05  # clamp so a lag spike slows the game down instead of clipping through walls
 
-# --- Tiles -------------------------------------------------------------------
-TILE_SIZE = 8    # pixel size of one Tiled tile; converts grid coords to pixels
+TILE_SIZE = 8
 
-# --- Animation ---------------------------------------------------------------
-# Per clip: (frames_per_second, loops)
-#   frames_per_second : how fast frame_index advances (frame_index += fps * dt)
-#   loops             : True -> wraps to frame 0 forever; False -> holds the last
+# per clip: (fps, loops) - loops False means it holds on the last frame
 ANIMATION_INFO: dict[str, dict[str, tuple[float, bool]]] = {
     "player" : {
         "idle" : (5, True),
@@ -44,9 +36,8 @@ ANIMATION_INFO: dict[str, dict[str, tuple[float, bool]]] = {
     }
 }
 
-# One-shot "glue" clips played between two states, keyed by (leaving, entering).
-# The clip finishes before the real state takes over, which gives the landing
-# thump and the jump wind-up their weight.
+# one-shot clips played between two states before the real state takes over,
+# e.g. a little landing thump between falling and idle
 ANIMATION_TRANSITIONS: dict[str, dict[tuple[str, str], str]] = {
     "player" : {
         ("embrace", "idle") : "fall-ground",
@@ -58,10 +49,8 @@ ANIMATION_TRANSITIONS: dict[str, dict[tuple[str, str], str]] = {
     }
 }
 
-# Cosmetic offset per clip. The art isn't centred identically in every clip
-# (a wall-grab leans into the wall), so this nudges the drawn image without
-# moving the hitbox. Positive x = toward the facing direction; Player.update_rect
-# mirrors it when facing right.
+# nudges the drawn sprite without moving the hitbox, since the art isn't
+# centred the same way in every clip (e.g. a wall-grab leans into the wall)
 ANIMATION_CORRECTION: dict[str, dict[str, vector]] = {
     "player" : {
         "idle" : vector(0, -2),
@@ -82,10 +71,8 @@ ANIMATION_CORRECTION: dict[str, dict[str, vector]] = {
     }
 }
 
-# --- Draw order --------------------------------------------------------------
-# AllSprites.draw sorts by .z before blitting: lower is painted first, so it
-# ends up behind. The player sits on "tile_details" so terrain ("main") draws
-# over the top of it.
+# AllSprites.draw sorts by .z, lower drawn first (so it ends up behind).
+# player sits on tile_details so the terrain layer draws over it
 Z_LAYERS: dict[str, int] = {
 	'bg': 0,
     "bg_details" : 1,
@@ -95,18 +82,10 @@ Z_LAYERS: dict[str, int] = {
 	'fg': 5
 }
 
-# --- Player tuning -----------------------------------------------------------
+# all the tuning numbers for how the player feels, pulled out here so I don't
+# have to go hunting through player.py to tweak jump height etc
 @dataclass(frozen=True)
 class PlayerPhysics:
-    """
-    Every number that decides how the player feels. Frozen so nothing can
-    accidentally retune the game at runtime -- edit the values here instead.
-
-    Units: speeds are internal pixels per second, accelerations are pixels per
-    second squared. Both are multiplied by dt at the point of use, so the feel
-    is identical at any framerate.
-    """
-
     x_acceleration : float = 420  # ground acceleration; 420/60 = ~0.14s to top speed
     x_max_speed    : float = 60   # horizontal speed cap
     jump_height    : float = 120  # upward launch speed for jump and wall jump

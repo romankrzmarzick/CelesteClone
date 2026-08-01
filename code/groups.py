@@ -6,6 +6,5 @@ class AllSprites(pygame.sprite.Group):
         self.internal_canvas = internal_canvas
 
     def draw(self) -> None:
-        """Blit every sprite onto the internal canvas, back layer first."""
-        for sprite in sorted(self, key=lambda s: s.z):
+        for sprite in sorted(self, key=lambda s: s.z):  # back layers first
             self.internal_canvas.blit(sprite.image, sprite.rect.topleft)

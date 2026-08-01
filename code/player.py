@@ -12,64 +12,41 @@ class Player(pygame.sprite.Sprite):
         z: int,
     ) -> None:
     
-        # player general setup
         super().__init__(groups)
         self.z = z
 
-        # // player image
         self.frames, self.frame_index = frames, 0
-        # state       : the clip currently playing (may be a transition clip)
-        # doing_state : the logical state, used to look up transitions
+        # state is the clip actually playing (could be a transition clip), doing_state
+        # is the real logical state, used to look up what transition to play next
         self.state, self.doing_state, self.facing_left = "idle", "idle", True
         self.image = self.frames[self.state][self.frame_index]
 
-        # // player vectors
-        self.dir_vector = vector()   # input intent, components in {-1, 0, 1}
-        self.move_vector = vector()  # velocity in pixels/second
+        self.dir_vector = vector()   # input intent, -1/0/1 per axis
+        self.move_vector = vector()  # actual velocity, pixels/second
 
-        # // y-direction atrributes
         self.is_jumping = False
 
-        # // special movement
-        # player crouching
         self.crouching = False
+        self.embrace = False    # true once falling with nothing close below (long fall)
+        self.can_dash = True    # only comes back once you land
 
-        # player long-fall: True once falling with nothing close below
-        self.embrace = False
-
-        # player dash: refreshed on landing, spent on dashing
-        self.can_dash = True
-
-        # player climbing
-        self.climbing = False         # the grip key is held
+        self.climbing = False         # grip key held
         self.climbing_active = False  # actually gripping a wall right now
 
-        # balance bool: the teeter animation has waited long enough to play
-        self.can_balance = False
-
+        self.can_balance = False  # teeter animation waited long enough to play
         self.is_sliding = False
 
-        # // player rects
-        # player collisions
         self.collision_sprites = collision_sprites
 
-        # images are only drawn on self.rect and updates the position with the hitbox.
+        # rect is just for drawing, hitbox_rect is what actually collides
         self.rect: pygame.FRect = self.image.get_frect(center=pos)
-
-        # an inflated rect that interacts with the collidable rects.
         self.hitbox_rect: pygame.FRect = self.rect.inflate((-8, -4))
-
-        # old_rect is used for the collision logic to find location between two objects.
         self.old_rect: pygame.FRect = self.hitbox_rect.copy()
         self.old_dir = vector()  # direction latched when the dash started
 
-        # cached rects of every collidable, rebuilt each frame by contact()
-        self.collide_rects: list[pygame.FRect] = []
-
-        # detection rects that are based on the player's position for specified use cases.
+        self.collide_rects: list[pygame.FRect] = []  # rebuilt each frame by contact()
         self.on_surface: dict[str, bool] = {"floor" : False, "left" : False, "right" : False, "edge" : False, "dangle" : False, "embrace" : False, "mantle" : False}
 
-        # // timers
         self.timers: dict[str, Timer] = {
             "balance_delay" : Timer(500, func=self.balance_animation),
             "wall_jump" : Timer(190),
@@ -124,15 +101,14 @@ class Player(pygame.sprite.Sprite):
         self.is_embrace()
         self.balance()
 
-        # // climb
         if not self.timers['mantle'].active:
             self.climb(dt)
             if self.climbing_active:
                 self.collisions("x")
                 self.collisions("y")
                 self.update_rect()
-                # re-armed every frame of the climb, so the cooldown is
-                # measured from the moment the player lets go of the wall
+                # re-armed every frame you're climbing, so the cooldown counts from
+                # the moment you actually let go of the wall
                 self.timers["dash_delay"].activate()
                 return
 
@@ -141,20 +117,17 @@ class Player(pygame.sprite.Sprite):
             self.update_rect()
             return
 
-        # // crouching switch
-        # Freeze in place while the crouch clip is the active animation.
+        # freeze in place while the crouch clip is playing
         if self.crouching and self.on_surface["floor"] and self.state == "crouch":
             return
 
-        # // dash
         if self.dash(dt):
             self.collisions("x")
             self.collisions("y")
             self.update_rect()
             return
 
-        # // gravity
-        # A wall slide replaces gravity outright rather than damping it.
+        # wall slide replaces gravity outright instead of just damping it
         if self.wall_slide(dt):
             pass
         else: self.gravity(dt)
@@ -165,7 +138,6 @@ class Player(pygame.sprite.Sprite):
             self.x_move(dt)
         self.collisions("x")
 
-        # // jumps
         if self.is_jumping:
             if self.on_surface["floor"] or self.timers["coyote"].active:
                 self.timers["coyote"].deactivate()
@@ -182,8 +154,7 @@ class Player(pygame.sprite.Sprite):
         if self.on_surface["floor"]:
             self.embrace = False
 
-    def balance_animation(self) -> None:
-        """Callback fired by `balance_delay` -- allows the teeter clip to play."""
+    def balance_animation(self) -> None:  # callback for balance_delay timer
         self.can_balance = True
 
     def balance(self) -> None:
@@ -212,17 +183,8 @@ class Player(pygame.sprite.Sprite):
             else: self.climbing_active = False
 
     def x_move(self, dt: float) -> None:
-        """
-        Accelerate horizontally toward the input direction, and apply it.
-
-        Speed ramps up (~0.14s to top speed) rather than snapping, which gives
-        the run some weight. Half the acceleration is added either side of the
-        position update, same as `gravity`. Releasing the direction drops speed
-        to zero at once -- precise platforming, not momentum. In the air, speed
-        is forced to 80% of max instead of ramping, so air control stays even.
-
-        Raise `x_acceleration` in PlayerPhysics for a snappier start.
-        """
+        # ramps up to top speed instead of snapping to it (gives running some weight),
+        # but letting go of the direction key drops speed to 0 immediately - no momentum
         if self.dir_vector.x != 0:
             self.move_vector.x += PLAYER_PHYSICS.x_acceleration * self.dir_vector.x / 2 * dt
             if self.move_vector.x > PLAYER_PHYSICS.x_max_speed: self.move_vector.x = PLAYER_PHYSICS.x_max_speed
@@ -240,13 +202,8 @@ class Player(pygame.sprite.Sprite):
         if self.dir_vector.x == 0: self.move_vector.x = 0
 
     def gravity(self, dt: float) -> None:
-        """
-        Accelerate downward, capped at terminal velocity.
-
-        Half the acceleration lands before the position update and half after
-        (a leapfrog step), which keeps a jump arc the same shape at any
-        framerate.
-        """
+        # split the acceleration before/after the position update so the jump arc
+        # stays the same shape no matter the framerate
         self.move_vector.y += PLAYER_PHYSICS.gravity_num / 2 * dt
         self.move_vector.y = min(PLAYER_PHYSICS.max_fall_speed, self.move_vector.y)
         self.hitbox_rect.y += self.move_vector.y * dt
@@ -254,35 +211,19 @@ class Player(pygame.sprite.Sprite):
         self.move_vector.y = min(PLAYER_PHYSICS.max_fall_speed, self.move_vector.y)
 
     def jump(self) -> None:
-        """
-        Jump first activates the wall jump delay timer to avoid unwanted wall jumps at the start of the jump.
-        Finally the jump simply sets the move_vector.y to the jump height as a negative to move the rect upwards.
-        """
-        self.timers["wall_jump_delay"].activate()
+        self.timers["wall_jump_delay"].activate()  # avoid an accidental wall jump right after this
         self.move_vector.y = -PLAYER_PHYSICS.jump_height
-        # small pixel adjustment for stick glitch
-        self.hitbox_rect.bottom -= 1
+        self.hitbox_rect.bottom -= 1  # nudge to fix a stick-to-ground glitch
 
     def wall_jump(self) -> None:
-        """
-        When the player object is on a wall and the jump key is pressed, the wall jump timer is activated to deny x direction input.
-        It does the same jump height for the y vector while pushing the object in the opposite direction from the wall.
-        """
-        self.timers["wall_jump"].activate()
+        self.timers["wall_jump"].activate()  # blocks x input while it's active
         self.move_vector.x = 0
         self.move_vector.y = -PLAYER_PHYSICS.jump_height
         self.dir_vector.x = 1 if self.on_surface["left"] else -1
 
     def wall_slide(self, dt: float) -> bool:
-        """
-        Gets rid of the gravity influence on the player object to then slowly push the character downwards to represent slding.
-
-        Needs: airborne, touching a wall, already falling, not mantling, and
-        still holding a direction -- let go and you drop off the wall.
-
-        Returns:
-            True if the slide handled vertical movement, so `move` skips gravity.
-        """
+        # needs: airborne, touching a wall, falling, not mantling, still holding a
+        # direction - let go and you just drop off the wall instead
         if not self.on_surface["floor"] and any((self.on_surface["left"], self.on_surface["right"])) and self.move_vector.y > 0 and not self.on_surface["mantle"] and self.move_vector.x != 0:
             self.move_vector.y = 0
             self.hitbox_rect.y += PLAYER_PHYSICS.gravity_num / 8 * dt
@@ -292,17 +233,8 @@ class Player(pygame.sprite.Sprite):
         return False
 
     def dash(self, dt: float) -> bool:
-        """
-        Move at a fixed speed along the direction latched when the dash began.
-
-        The direction is normalised so a diagonal covers the same distance as a
-        straight dash. `move_vector` is wiped, so a dash cancels any gravity or
-        momentum in progress -- that reset is what makes it save a bad jump.
-        One dash per landing: `can_dash` only comes back on the floor.
-
-        Returns:
-            True if a dash moved the player, so `move` skips the normal path.
-        """
+        # wipes move_vector, so a dash cancels whatever gravity/momentum was happening -
+        # that's what makes it useful for saving a bad jump. one per landing.
         if self.on_surface["floor"]:
             self.can_dash = True
 
@@ -315,14 +247,8 @@ class Player(pygame.sprite.Sprite):
         return False
 
     def update_rect(self) -> None:
-        """
-        A custom updating func for the self.rect based on the hitbox rect to fix animations.
-
-        The hitbox is the source of truth; the drawn rect follows it plus a
-        per-clip offset from ANIMATION_CORRECTION, mirrored when facing right
-        so the nudge always leans the same way relative to the character.
-        """
-        # Below adjusts the climb and wall animation to draw one more px over in the facing direction.
+        # hitbox is the source of truth, rect just follows it plus a per-clip
+        # offset (mirrored when facing right so it leans the same way)
         redraw_num = ANIMATION_CORRECTION["player"][self.state]
         if self.facing_left:
             self.rect.center = self.hitbox_rect.center + redraw_num
@@ -354,22 +280,13 @@ class Player(pygame.sprite.Sprite):
                         self.move_vector.y = 0
 
     def update_timers(self) -> None:
-        """Loops through the self.timers dictionary to update the time for them."""
         for timer in self.timers.values():
             timer.update()
 
     def now_state(self) -> str:
-        """
-        Decide which animation state the player is in right now.
-
-        A priority ladder, most specific first: death, dash, grounded states,
-        wall states, then plain airborne. First match wins, so the ordering is
-        the design. The name returned must match a folder in graphics/player/
-        and a key in ANIMATION_INFO.
-
-        Returns:
-            The state name, e.g. "idle", "run", "wall", "dangle".
-        """
+        # priority ladder, most specific first - death, dash, grounded, wall, airborne.
+        # first match wins, and whatever name comes back has to match a folder in
+        # graphics/player/ and a key in ANIMATION_INFO
         if self.dead:
             return "death"
 
@@ -406,10 +323,8 @@ class Player(pygame.sprite.Sprite):
     def contact(self) -> None:
         hitbox = self.hitbox_rect
 
-        # grabs only the rect from the sprite to avoid passing in the entire sprite.
         self.collide_rects = [sprite.rect for sprite in self.collision_sprites]
 
-        # core contact rects.
         floor_rect = pygame.Rect(hitbox.bottomleft, (hitbox.width, 1))
         left_rect = pygame.Rect((hitbox.topleft + vector(-1, hitbox.height / 3)), (1, hitbox.height / 3))
         right_rect = pygame.Rect((hitbox.topright + vector(0, hitbox.height / 3)), (1, hitbox.height / 3))
@@ -429,27 +344,20 @@ class Player(pygame.sprite.Sprite):
 
         embrace_rect = pygame.Rect(self.hitbox_rect.center, (1, TILE_SIZE * 5))
 
-        # // core
         was_on_floor = self.on_surface["floor"]
         self.on_surface["floor"] = self.is_touching(floor_rect)
         self.on_surface["left"] = self.is_touching(left_rect)
         self.on_surface["right"] = self.is_touching(right_rect)
         wall = any((self.on_surface["left"], self.on_surface["right"]))
 
-        # // special
         self.on_surface["embrace"] = not self.is_touching(embrace_rect) and self.move_vector.y > 0
-
         self.on_surface["mantle"] = not self.is_touching(climb_rect) and wall and self.climbing_active
-
         self.on_surface["edge"] = True if not self.is_touching(edge_rect) and self.is_touching(floor_rect) else False
-
         self.on_surface["dangle"] = not self.is_touching(dangle_rect) and wall
 
-        # // coyote time
-        # Armed on the one frame the floor disappears, so the window is always
-        # the full duration. The downward check separates walking off a ledge
-        # from jumping off one -- a jump leaves with negative y velocity, and
-        # arming here would give a free second jump in mid-air.
+        # coyote time: only arms the one frame the floor disappears out from under you,
+        # and only if you were falling normally - if you jumped off, y velocity is
+        # already negative here, so this wouldn't give you a free double jump
         if was_on_floor and not self.on_surface["floor"] and self.move_vector.y >= 0:
             self.timers["coyote"].activate()
 

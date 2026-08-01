@@ -19,14 +19,12 @@ class Timer:
             self.activate()
 
     def activate(self) -> None:
-        """Open the window and (re)start the countdown from now."""
         self.start_time = get_ticks()
         self.active = True
 
     def deactivate(self) -> None:
-        """Close the window early. Restarts immediately if `repeat` is set."""
         self.active = False
-        if self.repeat:
+        if self.repeat:  # restart right away if it's a repeating timer
             self.activate()
 
     def update(self) -> None:
