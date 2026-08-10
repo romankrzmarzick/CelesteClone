@@ -1,4 +1,4 @@
-from settings import *
+from settings import get_ticks
 from typing import Callable
 
 
@@ -24,7 +24,7 @@ class Timer:
 
     def deactivate(self) -> None:
         self.active = False
-        if self.repeat:  # restart right away if it's a repeating timer
+        if self.repeat:
             self.activate()
 
     def update(self) -> None:

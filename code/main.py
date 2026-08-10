@@ -1,6 +1,7 @@
 from settings import *
-from level import Level
 from support import import_sub_folder
+from world import World
+from data_storage import DataStorage
 
 
 class Game:
@@ -8,20 +9,24 @@ class Game:
         pygame.init()
         pygame.display.set_caption("Celeste")
 
-        self.internal_canvas = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))  # everything draws here at low res
-        self.display_canvas = pygame.display.set_mode((WINDOW_WIDTH * SCALE, WINDOW_HEIGHT * SCALE))  # actual window
+        self.internal_canvas = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.display_canvas = pygame.display.set_mode(
+            (WINDOW_WIDTH * SCALE, WINDOW_HEIGHT * SCALE)
+        )
         self.clock = pygame.time.Clock()
 
         self.import_images()
 
-        self.tmx_maps = {0 : load_pygame(join("data", "maps", "test.tmx"))}  # keyed by stage number
-
-        self.current_stage = Level(self.internal_canvas, self.tmx_maps[0], self.level_frames)
+        self.data_storage = DataStorage()
+        self.world = World(
+            Path("data/maps/TheCelesteWorld.world"),
+            self.internal_canvas,
+            self.level_frames,
+            self.data_storage,
+        )
 
     def import_images(self) -> None:
-        self.level_frames = {
-            "player" : import_sub_folder("graphics", "player")
-        }
+        self.level_frames = {"player": import_sub_folder("graphics", "player")}
 
     def run(self) -> None:
         while True:
@@ -32,7 +37,7 @@ class Game:
                     pygame.quit()
                     exit()
 
-            self.current_stage.run(dt)
+            self.world.run(dt)
 
             transformed_canvas = pygame.transform.scale_by(self.internal_canvas, SCALE)
             self.display_canvas.blit(transformed_canvas)

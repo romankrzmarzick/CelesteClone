@@ -1,99 +1,167 @@
-from dataclasses import dataclass
-import pygame, sys
-from pytmx.util_pygame import load_pygame
-from os.path import join
-from os import walk
+import pygame
 from pygame.math import Vector2 as vector
 from pygame.time import get_ticks
+from enum import Enum, auto, IntEnum
+from dataclasses import dataclass
+from pathlib import Path
+from pytmx.util_pygame import load_pygame
 
-# game renders at this low res onto an internal canvas, then gets scaled up by SCALE
 WINDOW_WIDTH, WINDOW_HEIGHT = 320, 180
+
 SCALE = 5
 
 FRAMERATE = 120
-MAX_DT = 0.05  # clamp so a lag spike slows the game down instead of clipping through walls
+MAX_DT = 0.05
 
 TILE_SIZE = 8
 
-# per clip: (fps, loops) - loops False means it holds on the last frame
-ANIMATION_INFO: dict[str, dict[str, tuple[float, bool]]] = {
-    "player" : {
-        "idle" : (5, True),
-        "run" : (12, True),
-        "crouch" : (25, False),
-        "push" : (10, True),
-        "jump" : (1, False),
-        "wall" : (1, False),
-        "fall" : (5, False),
-        "embrace" : (5, False),
-        "climb" : (18, True),
-        "balance" : (8, True),
-        "dash" : (15, False),
-        "fall-ground" : (35, False),
-        "ground-jump" : (25, False),
-        "death" :  (35, False),
-        "dangle" : (8, True),
+
+class Z_LAYERS(IntEnum):
+    BACKGROUND = 0
+    BACKGROUND_DETAILS = 1
+    TILES = 2
+    TILE_DETAILS = 3
+    MAIN = 4
+    FOREGROUND = 5
+
+
+class Map(Enum):
+    ENTITIES = "Entities"
+    DEATH = "Death"
+    SPIKES = "Spikes"
+    TERRAIN = "Terrain"
+
+
+class AnimationEntity(Enum):
+    PLAYER = auto()
+
+
+class ProbeType(Enum):
+    FLOOR = auto()
+    LEFT = auto()
+    RIGHT = auto()
+    DANGLE = auto()
+    EDGE = auto()
+    EMBRACE_FALL = auto()
+    MANTLE = auto()
+
+
+class TimerType(Enum):
+    COYOTE = auto()
+    DELAY_DASH = auto()
+    MANTLE = auto()
+    DASH = auto()
+    WALL_JUMP_ACTION = auto()
+    DELAY_WALL_JUMP = auto()
+    DELAY_BALANCE = auto()
+
+
+class PlayerAnimationState(Enum):
+    IDLE = "idle"
+    RUN = "run"
+    CROUCH = "crouch"
+    PUSH = "push"
+    JUMP = "jump"
+    WALL = "wall"
+    FALL = "fall"
+    EMBRACE_FALL = "embrace_fall"
+    CLIMB = "climb"
+    BALANCE = "balance"
+    DASH = "dash"
+    FALL_GROUND = "fall_ground"
+    GROUND_JUMP = "ground_jump"
+    DEATH = "death"
+    DANGLE = "dangle"
+
+
+ANIMATION_INFO: dict[
+    AnimationEntity, dict[PlayerAnimationState, tuple[float, bool]]
+] = {
+    AnimationEntity.PLAYER: {
+        PlayerAnimationState.IDLE: (5, True),
+        PlayerAnimationState.RUN: (12, True),
+        PlayerAnimationState.CROUCH: (25, False),
+        PlayerAnimationState.PUSH: (10, True),
+        PlayerAnimationState.JUMP: (1, False),
+        PlayerAnimationState.WALL: (1, False),
+        PlayerAnimationState.FALL: (5, False),
+        PlayerAnimationState.EMBRACE_FALL: (5, False),
+        PlayerAnimationState.CLIMB: (18, True),
+        PlayerAnimationState.BALANCE: (8, True),
+        PlayerAnimationState.DASH: (15, False),
+        PlayerAnimationState.FALL_GROUND: (25, False),
+        PlayerAnimationState.GROUND_JUMP: (45, False),
+        PlayerAnimationState.DEATH: (35, False),
+        PlayerAnimationState.DANGLE: (8, True),
     }
 }
 
-# one-shot clips played between two states before the real state takes over,
-# e.g. a little landing thump between falling and idle
-ANIMATION_TRANSITIONS: dict[str, dict[tuple[str, str], str]] = {
-    "player" : {
-        ("embrace", "idle") : "fall-ground",
-        ("embrace", "run") : "fall-ground",
-        ("fall", "idle") : "fall-ground",
-        ("fall", "run") : "fall-ground",
-        ("idle", "jump") : "ground-jump",
-        ("run", "jump") : "ground-jump",
+ANIMATION_TRANSITIONS: dict[
+    AnimationEntity,
+    dict[tuple[PlayerAnimationState, PlayerAnimationState], PlayerAnimationState],
+] = {
+    AnimationEntity.PLAYER: {
+        (
+            PlayerAnimationState.EMBRACE_FALL,
+            PlayerAnimationState.IDLE,
+        ): PlayerAnimationState.FALL_GROUND,
+        (
+            PlayerAnimationState.EMBRACE_FALL,
+            PlayerAnimationState.RUN,
+        ): PlayerAnimationState.FALL_GROUND,
+        (
+            PlayerAnimationState.FALL,
+            PlayerAnimationState.IDLE,
+        ): PlayerAnimationState.FALL_GROUND,
+        (
+            PlayerAnimationState.FALL,
+            PlayerAnimationState.RUN,
+        ): PlayerAnimationState.FALL_GROUND,
+        (
+            PlayerAnimationState.IDLE,
+            PlayerAnimationState.JUMP,
+        ): PlayerAnimationState.GROUND_JUMP,
+        (
+            PlayerAnimationState.RUN,
+            PlayerAnimationState.JUMP,
+        ): PlayerAnimationState.GROUND_JUMP,
     }
 }
 
-# nudges the drawn sprite without moving the hitbox, since the art isn't
-# centred the same way in every clip (e.g. a wall-grab leans into the wall)
-ANIMATION_CORRECTION: dict[str, dict[str, vector]] = {
-    "player" : {
-        "idle" : vector(0, -2),
-        "run" : vector(0, -2),
-        "crouch" : vector(0, -2),
-        "push" : vector(2, -2),
-        "jump" : vector(0, -2),
-        "wall" : vector(1, -2),
-        "fall" : vector(0, -2),
-        "embrace" : vector(0, -2),
-        "climb" : vector(1, -2),
-        "balance" : vector(1, -2),
-        "dash" : vector(1, -2),
-        "fall-ground" : vector(0, -2),
-        "ground-jump" : vector(0, -2),
-        "death" :  vector(0, -2),
-        "dangle" : vector(2, -2),
+ANIMATION_CORRECTION: dict[AnimationEntity, dict[PlayerAnimationState, vector]] = {
+    AnimationEntity.PLAYER: {
+        PlayerAnimationState.IDLE: vector(0, -2),
+        PlayerAnimationState.RUN: vector(0, -2),
+        PlayerAnimationState.CROUCH: vector(0, -2),
+        PlayerAnimationState.PUSH: vector(2, -2),
+        PlayerAnimationState.JUMP: vector(0, -2),
+        PlayerAnimationState.WALL: vector(1, -2),
+        PlayerAnimationState.FALL: vector(0, -2),
+        PlayerAnimationState.EMBRACE_FALL: vector(0, -2),
+        PlayerAnimationState.CLIMB: vector(1, -2),
+        PlayerAnimationState.BALANCE: vector(1, -2),
+        PlayerAnimationState.DASH: vector(1, -2),
+        PlayerAnimationState.FALL_GROUND: vector(0, -2),
+        PlayerAnimationState.GROUND_JUMP: vector(0, -2),
+        PlayerAnimationState.DEATH: vector(0, -2),
+        PlayerAnimationState.DANGLE: vector(2, -2),
     }
 }
 
-# AllSprites.draw sorts by .z, lower drawn first (so it ends up behind).
-# player sits on tile_details so the terrain layer draws over it
-Z_LAYERS: dict[str, int] = {
-	'bg': 0,
-    "bg_details" : 1,
-	'tiles': 2,
-	'tile_details': 3,
-	'main': 4,
-	'fg': 5
-}
 
-# all the tuning numbers for how the player feels, pulled out here so I don't
-# have to go hunting through player.py to tweak jump height etc
 @dataclass(frozen=True)
 class PlayerPhysics:
-    x_acceleration : float = 420  # ground acceleration; 420/60 = ~0.14s to top speed
-    x_max_speed    : float = 60   # horizontal speed cap
-    jump_height    : float = 120  # upward launch speed for jump and wall jump
-    gravity_num    : float = 330  # downward acceleration; /8 of this is the wall-slide speed
-    max_fall_speed : float = 160  # terminal velocity
-    dash_speed     : float = 130  # speed while the dash timer is running
-    climbing_speed : float = 50   # up/down speed while gripping a wall
-    mantle_x_speed : float = 40   # sideways shove when pulling over a ledge
-    mantle_y_speed : float = 80   # upward shove when pulling over a ledge
+    x_acceleration: float = 420  # ground acceleration; 420/60 = ~0.14s to top speed
+    x_max_speed: float = 60  # horizontal speed cap
+    jump_height: float = 120  # upward launch speed for jump and wall jump
+    gravity_num: float = (
+        330  # downward acceleration; /8 of this is the wall-slide speed
+    )
+    max_fall_speed: float = 160  # terminal velocity
+    dash_speed: float = 130  # speed while the dash timer is running
+    climbing_speed: float = 50  # up/down speed while gripping a wall
+    mantle_x_speed: float = 40  # sideways shove when pulling over a ledge
+    mantle_y_speed: float = 80  # upward shove when pulling over a ledge
+
 
 PLAYER_PHYSICS = PlayerPhysics()
